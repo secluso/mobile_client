@@ -31,9 +31,9 @@ class DownloadResult {
   DownloadResult({this.not_found = false, this.file, this.data});
 }
 
-class _SilentException implements Exception {
+class SilentException implements Exception {
   final String message;
-  _SilentException(this.message);
+  SilentException(this.message);
   @override
   String toString() => message;
 }
@@ -389,7 +389,7 @@ class HttpClientService {
     await _handleServerVersionHeader(response);
     if (response.statusCode != 200) {
       if (response.statusCode == 404) {
-        throw _SilentException(
+        throw SilentException(
           'Failed to fetch fcm config: ${response.statusCode} ${response.reasonPhrase}',
         );
       } else {
@@ -495,7 +495,7 @@ class HttpClientService {
     await _handleServerVersionHeader(delResponse);
     if (delResponse.statusCode != 200) {
       if (delResponse.statusCode == 404) {
-        throw _SilentException(
+        throw SilentException(
           'Failed to delete video from server: ${delResponse.statusCode} ${delResponse.reasonPhrase}',
         );
       } else {
@@ -598,7 +598,7 @@ class HttpClientService {
           'Failed to fetch data: ${response.statusCode} ${response.reasonPhrase}';
       if (response.statusCode == 404) {
         // A missing next chunk is a normal livestream pause/end condition.
-        throw _SilentException(message);
+        throw SilentException(message);
       }
       throw Exception(message);
     }
@@ -635,23 +635,32 @@ class HttpClientService {
   /// POST /config/<group>
   Future<Result<void>> configCommand({
     required String cameraName,
-    required Object command,
+    required Uint8List command,
   }) => _wrap(() async {
     final creds = await _getValidatedCredentials();
     final group = await _groupName(cameraName, Group.config);
     final url = _buildUrl(creds.serverAddr, ['config', group]);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
 
-    final response = await http.post(url, headers: headers, body: command);
+    if (command.isEmpty) {
+      throw Exception('Error: empty config command');
+    }
+
+    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    headers['X-Command-Size'] = command.length.toString();
+
+    final response = await http
+        .post(url, headers: headers, body: command);
+
     await _handleServerVersionHeader(response);
 
     if (response.statusCode != 200) {
       throw Exception(
-        'Failed to send config command: ${response.statusCode} ${response.reasonPhrase}',
+        'Failed to send config command: ${response.statusCode} '
+        '${response.reasonPhrase}: ${response.body}',
       );
-    } else {
-      Log.d("Successfully sent config command");
     }
+
+    Log.d("Successfully sent config command");
   });
 
   /// GET /config_response/<group>
@@ -672,7 +681,7 @@ class HttpClientService {
     await _handleServerVersionHeader(response);
     if (response.statusCode != 200) {
       if (response.statusCode == 404) {
-        throw _SilentException(
+        throw SilentException(
           'Failed to fetch config response: ${response.statusCode} ${response.reasonPhrase}',
         );
       } else {
@@ -699,8 +708,9 @@ class HttpClientService {
       }
       return Result.success(await block());
     } catch (e, st) {
-      if (e is _SilentException) {
+      if (e is SilentException) {
         Log.d("HttpClientService error: $e");
+        return Result.failure(e);
       } else if (_isNetworkException(e)) {
         Log.w("HttpClientService warning: $e");
       } else {
@@ -723,7 +733,7 @@ class HttpClientService {
   Future<void> _ensureVersionCompatible() async {
     if (VersionGate.isBlocked) {
       await potentiallySendBackgroundNotification();
-      throw _SilentException('Version gate active');
+      throw SilentException('Version gate active');
     }
     if (_versionMatchConfirmed) {
       return;
@@ -732,7 +742,7 @@ class HttpClientService {
     await _versionCheckInFlight;
     _versionCheckInFlight = null;
     if (VersionGate.isBlocked) {
-      throw _SilentException('Version gate active');
+      throw SilentException('Version gate active');
     }
   }
 
@@ -756,7 +766,7 @@ class HttpClientService {
       );
 
       await potentiallySendBackgroundNotification();
-      throw _SilentException('Server/client version mismatch');
+      throw SilentException('Server/client version mismatch');
     }
 
     _versionMatchConfirmed = true;
@@ -882,7 +892,7 @@ class HttpClientService {
       username?.trim(),
       password?.trim(),
     ].any((value) => value == null || value.isEmpty)) {
-      throw _SilentException('Missing server credentials');
+      throw SilentException('Missing server credentials');
     }
 
     return (
@@ -952,7 +962,7 @@ class HttpClientService {
     }
 
     if (groupName.startsWith("Error: Busy")) {
-      throw _SilentException('Group name busy for $cameraName ($clientTag)');
+      throw SilentException('Group name busy for $cameraName ($clientTag)');
     }
 
     Log.w(
@@ -964,7 +974,7 @@ class HttpClientService {
     final lastAttempt = _groupNameInitLast[retryKey];
     if (lastAttempt != null &&
         now.difference(lastAttempt) < _groupNameInitCooldown) {
-      throw _SilentException(
+      throw SilentException(
         'Group name unavailable for $cameraName ($clientTag)',
       );
     }
@@ -998,7 +1008,7 @@ class HttpClientService {
       );
     }
 
-    throw _SilentException(
+    throw SilentException(
       'Group name unavailable for $cameraName ($clientTag)',
     );
   }

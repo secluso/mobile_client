@@ -99,6 +99,8 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
   bool _downloadActive = false;
   bool get _isPreviewMode => widget.previewVideos != null;
 
+  int _cameraStatus = CameraStatus.online;
+
   Future<void> _openSettings() async {
     final action = await Navigator.push<CameraSettingsAction>(
       context,
@@ -224,9 +226,13 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
     final prefs = await SharedPreferences.getInstance();
     await prefs.reload();
     final cameraName = widget.cameraName;
-    var cameraStatus =
-        prefs.getInt(PrefKeys.cameraStatusPrefix + cameraName) ??
-        CameraStatus.online;
+    final cameraStatus =
+      prefs.getInt(PrefKeys.cameraStatusPrefix + cameraName) ??
+      CameraStatus.online;
+
+    if (mounted) {
+      setState(() => _cameraStatus = cameraStatus);
+    }
     Log.d("Viewing camera: camera status = $cameraStatus");
 
     if (cameraStatus == CameraStatus.offline ||
@@ -1102,6 +1108,7 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
   Widget _overviewHeader(_CameraViewMetrics metrics) {
     final theme = Theme.of(context);
     final dark = theme.brightness == Brightness.dark;
+    final isOnline = _cameraStatus == CameraStatus.online;
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1130,14 +1137,14 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
                   Container(
                     width: metrics.statusDotSize,
                     height: metrics.statusDotSize,
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF10B981),
+                    decoration: BoxDecoration(
+                      color: isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444),
                       shape: BoxShape.circle,
                     ),
                   ),
                   SizedBox(width: metrics.statusDotGap),
                   Text(
-                    'ONLINE · E2E ENCRYPTED',
+                    isOnline ? 'ONLINE · E2E ENCRYPTED' : 'OFFLINE',
                     style: theme.textTheme.labelMedium?.copyWith(
                       color:
                           dark

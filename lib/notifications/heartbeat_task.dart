@@ -73,6 +73,7 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
       final timestamp = BigInt.from(timestampInt);
       var successful = false;
       var downloaded = false;
+      var networkError = false;
       Log.d("$cameraName: Heartbeat timestamp = $timestamp");
 
       var lastHeartbeatTimestamp =
@@ -282,11 +283,15 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                 Log.d(
                   '$cameraName: Error fetching heartbeat config response (attempt $i): $err',
                 );
+                if (err is! SilentException) {
+                  Log.d('$cameraName: Non-404 error detected');
+                  networkError = true;
+                }
               },
             );
           }
 
-          if (downloaded && !successful) {
+          if (downloaded && !successful && !networkError) {
             // We get here if we could not successfully fetch the response in all the attempts in the loop
             // If we delete the camera while heartbeat is taking place, we could end up
             // here after the camera is deleted. So we check that here.
