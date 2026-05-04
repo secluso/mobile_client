@@ -1922,7 +1922,7 @@ dependencies = [
 [[package]]
 name = "secluso-app-native"
 version = "1.0.0"
-source = "git+https://github.com/secluso/secluso?rev=12144a9fd4b9ec7b874a556230cec743e338f9cc#12144a9fd4b9ec7b874a556230cec743e338f9cc"
+source = "git+https://github.com/secluso/secluso?rev=33453cb1bfeaab3b0efed1073d1df02c418918e5#33453cb1bfeaab3b0efed1073d1df02c418918e5"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1931,7 +1931,7 @@ dependencies = [
  "lazy_static",
  "log",
  "openmls",
- "rand 0.8.6",
+ "rand 0.9.4",
  "secluso-client-lib",
  "secluso-client-server-lib",
  "serde",
@@ -1942,7 +1942,7 @@ dependencies = [
 [[package]]
 name = "secluso-client-lib"
 version = "1.0.0"
-source = "git+https://github.com/secluso/secluso?rev=12144a9fd4b9ec7b874a556230cec743e338f9cc#12144a9fd4b9ec7b874a556230cec743e338f9cc"
+source = "git+https://github.com/secluso/secluso?rev=33453cb1bfeaab3b0efed1073d1df02c418918e5#33453cb1bfeaab3b0efed1073d1df02c418918e5"
 dependencies = [
  "anyhow",
  "base64-url",
@@ -1954,7 +1954,7 @@ dependencies = [
  "openmls_memory_storage",
  "openmls_rust_crypto",
  "openmls_traits",
- "rand 0.8.6",
+ "rand 0.9.4",
  "serde",
  "serde_derive",
  "serde_json",
@@ -1963,10 +1963,10 @@ dependencies = [
 [[package]]
 name = "secluso-client-server-lib"
 version = "1.0.0"
-source = "git+https://github.com/secluso/secluso?rev=12144a9fd4b9ec7b874a556230cec743e338f9cc#12144a9fd4b9ec7b874a556230cec743e338f9cc"
+source = "git+https://github.com/secluso/secluso?rev=33453cb1bfeaab3b0efed1073d1df02c418918e5#33453cb1bfeaab3b0efed1073d1df02c418918e5"
 dependencies = [
  "anyhow",
- "rand 0.8.6",
+ "rand 0.9.4",
  "serde",
  "serde_json",
 ]
