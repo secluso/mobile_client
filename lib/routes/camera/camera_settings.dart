@@ -14,6 +14,7 @@ enum CameraSettingsAction { removeCamera }
 class SettingsPage extends StatefulWidget {
   final String cameraName;
   final String? previewFirmwareVersion;
+  final int? previewOsVersion;
   final String? previewSelectedResolution;
   final int? previewSelectedFps;
   final bool? previewNotificationsEnabled;
@@ -23,6 +24,7 @@ class SettingsPage extends StatefulWidget {
     super.key,
     required this.cameraName,
     this.previewFirmwareVersion,
+    this.previewOsVersion,
     this.previewSelectedResolution,
     this.previewSelectedFps,
     this.previewNotificationsEnabled,
@@ -49,6 +51,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool notificationsEnabled = true;
   bool preRollEnabled = true;
   String? firmwareVersion;
+  int? osVersion;
 
   // Options: user can select "All" or choose specific events like Motion, Humans, Vehicles, or Pets.
   final List<String> notificationOptions = [
@@ -66,6 +69,7 @@ class _SettingsPageState extends State<SettingsPage> {
     super.initState();
     if (_isPreviewMode) {
       firmwareVersion = widget.previewFirmwareVersion;
+      osVersion = widget.previewOsVersion;
       selectedResolution =
           widget.previewSelectedResolution ?? selectedResolution;
       selectedFps = widget.previewSelectedFps ?? selectedFps;
@@ -86,6 +90,9 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() {
       firmwareVersion = prefs.getString(
         PrefKeys.firmwareVersionPrefix + widget.cameraName,
+      );
+      osVersion = prefs.getInt(
+        PrefKeys.cameraOsVersionPrefix + widget.cameraName,
       );
       notificationsEnabled =
           prefs.getBool(
@@ -263,6 +270,17 @@ class _SettingsPageState extends State<SettingsPage> {
                     ShellSettingsRow(
                       title: 'Firmware',
                       value: firmwareVersion!,
+                      trailing: const SizedBox.shrink(),
+                      height: metrics.shortRowHeight,
+                      horizontalPadding: metrics.rowHorizontalPadding,
+                      titleStyle: rowTitleStyle,
+                      valueStyle: rowValueStyle,
+                      valueChevronGap: 0,
+                    ),
+                  if (osVersion != null)
+                    ShellSettingsRow(
+                      title: 'OS Version',
+                      value: osVersion!.toString(),
                       trailing: const SizedBox.shrink(),
                       height: metrics.shortRowHeight,
                       horizontalPadding: metrics.rowHorizontalPadding,

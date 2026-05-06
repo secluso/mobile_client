@@ -653,6 +653,7 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
       return const camera_settings.SettingsPage(
         cameraName: 'Front Door',
         previewFirmwareVersion: '1.4.2',
+        previewOsVersion: 12,
         previewSelectedResolution: '4K',
         previewSelectedFps: 30,
         previewNotificationsEnabled: true,

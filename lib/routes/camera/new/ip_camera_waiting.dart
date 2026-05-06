@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:secluso_flutter/routes/camera/list_cameras.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
 import 'package:secluso_flutter/utilities/app_coordination_state.dart';
+import 'package:secluso_flutter/utilities/camera_version_info.dart';
 import 'package:secluso_flutter/utilities/rust_util.dart';
 import 'package:secluso_flutter/database/entities.dart';
 import 'package:secluso_flutter/database/app_stores.dart';
@@ -59,14 +60,19 @@ class _CameraSetupStatusDialogState extends State<CameraSetupStatusDialog> {
     Log.d("CameraSetup: begin for $cameraName");
 
     addCamera(cameraName, ip, qrCode, false, '', '', '').then((
-      firmwareVersion,
+      versionInfoJson,
     ) async {
       if (!mounted) return;
 
-      final success = !firmwareVersion.startsWith("Error");
+      final success =
+          !versionInfoJson.startsWith("Error") &&
+          versionInfoJson != "PairVersionIncompatible";
 
       if (success) {
-        await _persistCamera(cameraName, firmwareVersion);
+        await _persistCamera(
+          cameraName,
+          CameraVersionInfo.fromJsonString(versionInfoJson),
+        );
       }
 
       setState(() => _success = success);
@@ -79,7 +85,10 @@ class _CameraSetupStatusDialogState extends State<CameraSetupStatusDialog> {
     });
   }
 
-  Future<void> _persistCamera(String cameraName, String firmwareVersion) async {
+  Future<void> _persistCamera(
+    String cameraName,
+    CameraVersionInfo versionInfo,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
     prefs.setBool("first_time_$cameraName", true);
 
@@ -98,7 +107,11 @@ class _CameraSetupStatusDialogState extends State<CameraSetupStatusDialog> {
       await prefs.setInt(PrefKeys.lastHeartbeatTimestampPrefix + cameraName, 0);
       await prefs.setString(
         PrefKeys.firmwareVersionPrefix + cameraName,
-        firmwareVersion,
+        versionInfo.firmwareVersion,
+      );
+      await prefs.setInt(
+        PrefKeys.cameraOsVersionPrefix + cameraName,
+        versionInfo.osVersion,
       );
     }
 

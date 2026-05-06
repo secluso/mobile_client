@@ -5,6 +5,7 @@ import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/notifications/download_task.dart';
 import 'package:secluso_flutter/notifications/notifications.dart';
 import 'package:secluso_flutter/notifications/thumbnails.dart';
+import 'package:secluso_flutter/utilities/camera_version_info.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
 import 'package:secluso_flutter/utilities/lock.dart';
@@ -34,18 +35,6 @@ class RustBridgeHelper {
     await RustLib.init();
     _initialized = true;
   }
-}
-
-/// Splits [input] into two parts: before and after the first underscore.
-/// If there's no underscore, returns (input, "").
-List<String> splitAtUnderscore(String input) {
-  final index = input.indexOf('_');
-  if (index == -1) {
-    return [input, ""];
-  }
-  final before = input.substring(0, index);
-  final after = input.substring(index + 1);
-  return [before, after];
 }
 
 Future<bool> _cameraStillExists(
@@ -145,9 +134,11 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                   expectedTimestamp: timestamp,
                 );
                 Log.d("$cameraName: heartbeatResult = $heartbeatResult");
-                final heartbeatResultParts = splitAtUnderscore(heartbeatResult);
+                final heartbeatStatus = HeartbeatStatus.fromJsonString(
+                  heartbeatResult,
+                );
 
-                if (heartbeatResultParts[0] == "healthy") {
+                if (heartbeatStatus.status == "healthy") {
                   Log.d("$cameraName: Processing healthy heartbeat");
                   await prefs.setInt(
                     PrefKeys.numIgnoredHeartbeatsPrefix + cameraName,
@@ -164,25 +155,29 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                     PrefKeys.numHeartbeatNotificationsPrefix + cameraName,
                     0,
                   );
-                  final firmwareVersion = heartbeatResultParts[1];
-                  if (firmwareVersion != "") {
+                  final versionInfo = heartbeatStatus.versionInfo;
+                  if (versionInfo != null) {
                     final currentFirmware =
                         prefs.getString(
                           PrefKeys.firmwareVersionPrefix + cameraName,
                         ) ??
                         "";
-                    if (currentFirmware != firmwareVersion) {
+                    if (currentFirmware != versionInfo.firmwareVersion) {
                       showCameraStatusNotification(
                         cameraName: cameraName,
                         msg:
-                            "Camera's Secluso firmware version has been updated to $firmwareVersion.",
+                            "Camera's Secluso firmware version has been updated to ${versionInfo.firmwareVersion}.",
                       );
 
                       // TODO: We should compare it with the app version. If they don't match, display notice to user.
                     }
                     await prefs.setString(
                       PrefKeys.firmwareVersionPrefix + cameraName,
-                      heartbeatResultParts[1],
+                      versionInfo.firmwareVersion,
+                    );
+                    await prefs.setInt(
+                      PrefKeys.cameraOsVersionPrefix + cameraName,
+                      versionInfo.osVersion,
                     );
                   }
                   var sendNotificationGlobal =
@@ -198,7 +193,7 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                       msg: "Camera connection is restored.",
                     );
                   }
-                } else if (heartbeatResultParts[0] == "invalid ciphertext") {
+                } else if (heartbeatStatus.status == "invalid ciphertext") {
                   Log.d("$cameraName: Processing invalid ciphertext heartbeat");
                   await prefs.setInt(
                     PrefKeys.cameraStatusPrefix + cameraName,

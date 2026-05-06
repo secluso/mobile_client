@@ -26,6 +26,7 @@ import 'package:secluso_flutter/routes/home_page.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
 import 'package:secluso_flutter/utilities/app_coordination_state.dart';
 import 'package:secluso_flutter/utilities/app_paths.dart';
+import 'package:secluso_flutter/utilities/camera_version_info.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
 import 'package:secluso_flutter/utilities/proprietary_camera_hotspot.dart';
 import 'package:secluso_flutter/utilities/review_environment.dart';
@@ -324,7 +325,7 @@ class _ProprietaryCameraWaitingDialogState
         return;
       }
 
-      final firmwareVersion = await addCamera(
+      final versionInfoJson = await addCamera(
         widget.cameraName,
         Constants.proprietaryCameraIp,
         List<int>.from(widget.qrCode!),
@@ -334,15 +335,16 @@ class _ProprietaryCameraWaitingDialogState
         pairingToken,
       );
 
-      if (firmwareVersion.startsWith("Error")) {
+      if (versionInfoJson.startsWith("Error")) {
         setState(
           () => _errorMessage = "Failed to send pairing data to camera.",
         );
         return;
-      } else if (firmwareVersion == "PairVersionIncompatible") {
+      } else if (versionInfoJson == "PairVersionIncompatible") {
         setState(() => _errorMessage = "Incompatible firmware version.");
         return;
       }
+      final versionInfo = CameraVersionInfo.fromJsonString(versionInfoJson);
 
       // Give the camera time to read the encrypted Wi-Fi payload before
       // tearing down the phone-side hotspot association.
@@ -374,7 +376,7 @@ class _ProprietaryCameraWaitingDialogState
       if (!mounted) return;
 
       if (status.isSuccess && status.value! == "paired") {
-        _onPairingConfirmed(firmwareVersion);
+        _onPairingConfirmed(versionInfo);
       } else {
         setState(() => _timedOut = true);
       }
@@ -390,7 +392,7 @@ class _ProprietaryCameraWaitingDialogState
     }
   }
 
-  void _onPairingConfirmed(String firmwareVersion) async {
+  void _onPairingConfirmed(CameraVersionInfo versionInfo) async {
     if (!mounted || _pairingCompleted) return;
     // TODO: should these two lines go before the mounted check? what happens if this occurs?
 
@@ -426,7 +428,11 @@ class _ProprietaryCameraWaitingDialogState
       );
       await prefs.setString(
         PrefKeys.firmwareVersionPrefix + widget.cameraName,
-        firmwareVersion,
+        versionInfo.firmwareVersion,
+      );
+      await prefs.setInt(
+        PrefKeys.cameraOsVersionPrefix + widget.cameraName,
+        versionInfo.osVersion,
       );
     }
 
