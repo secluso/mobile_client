@@ -300,6 +300,10 @@ class _ProprietaryCameraWaitingDialogState
   }
 
   void _startInitialPairing() async {
+    Log.d(
+      'Starting proprietary pairing '
+      '(camera=${widget.cameraName}, wifiSsid=${widget.wifiSsid})',
+    );
     setState(() {
       _errorMessage = null;
       _timedOut = false;
@@ -317,6 +321,7 @@ class _ProprietaryCameraWaitingDialogState
       );
       if (!hotspotReady) {
         if (!mounted) return;
+        Log.w('Pairing failed before addCamera: camera hotspot not ready');
         setState(
           () =>
               _errorMessage =
@@ -335,12 +340,15 @@ class _ProprietaryCameraWaitingDialogState
         pairingToken,
       );
 
+      Log.d('addCamera returned: $versionInfoJson');
       if (versionInfoJson.startsWith("Error")) {
+        Log.w('Pairing failed: addCamera returned error ($versionInfoJson)');
         setState(
           () => _errorMessage = "Failed to send pairing data to camera.",
         );
         return;
       } else if (versionInfoJson == "PairVersionIncompatible") {
+        Log.w('Pairing failed: incompatible firmware version');
         setState(() => _errorMessage = "Incompatible firmware version.");
         return;
       }
@@ -348,17 +356,26 @@ class _ProprietaryCameraWaitingDialogState
 
       // Give the camera time to read the encrypted Wi-Fi payload before
       // tearing down the phone-side hotspot association.
+      Log.d(
+        'Waiting $_cameraReadGracePeriod before disconnecting camera hotspot',
+      );
       await Future.delayed(_cameraReadGracePeriod);
 
+      Log.d('Disconnecting from camera hotspot after sending Wi-Fi info');
       await _disconnectWifiOnce();
+      Log.d(
+        'Waiting for phone network reachability after camera hotspot disconnect',
+      );
       await _waitForPostPairConnectivity();
 
       if (!mounted) return;
 
+      Log.d('Uploading notification target before pairing status wait');
       await PushNotificationService.tryUploadIfNeeded(true);
       final iosRelayBlocker = await _iosRelayPairingBlocker();
       if (iosRelayBlocker != null) {
         if (!mounted) return;
+        Log.w('Pairing failed: iOS relay blocker ($iosRelayBlocker)');
         setState(() => _errorMessage = iosRelayBlocker);
         return;
       }
@@ -376,18 +393,22 @@ class _ProprietaryCameraWaitingDialogState
       if (!mounted) return;
 
       if (status.isSuccess && status.value! == "paired") {
+        Log.d('Pairing confirmed by relay');
         _onPairingConfirmed(versionInfo);
       } else {
+        Log.w('Pairing failed: relay status did not confirm paired ($status)');
         setState(() => _timedOut = true);
       }
 
       // Backup
       Future.delayed(const Duration(seconds: 45), () {
         if (mounted && !_pairingCompleted) {
+          Log.w('Pairing failed: backup timeout fired after 45s');
           setState(() => _timedOut = true);
         }
       });
     } catch (e) {
+      Log.w('Pairing failed with unexpected exception: $e');
       setState(() => _errorMessage = "Unexpected error: $e");
     }
   }
@@ -430,7 +451,7 @@ class _ProprietaryCameraWaitingDialogState
         PrefKeys.firmwareVersionPrefix + widget.cameraName,
         versionInfo.firmwareVersion,
       );
-      await prefs.setInt(
+      await prefs.setString(
         PrefKeys.cameraOsVersionPrefix + widget.cameraName,
         versionInfo.osVersion,
       );

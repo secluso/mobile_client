@@ -4,7 +4,7 @@ import 'dart:convert';
 
 class CameraVersionInfo {
   final String firmwareVersion;
-  final int osVersion;
+  final String osVersion;
 
   const CameraVersionInfo({
     required this.firmwareVersion,
@@ -22,7 +22,7 @@ class CameraVersionInfo {
   factory CameraVersionInfo.fromJson(Map<String, dynamic> json) {
     final firmwareVersion = json['firmware_version'];
     final osVersion = json['os_version'];
-    if (firmwareVersion is! String || osVersion is! int) {
+    if (firmwareVersion is! String || osVersion is! String) {
       throw FormatException('Invalid camera version info');
     }
     return CameraVersionInfo(

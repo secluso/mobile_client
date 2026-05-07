@@ -14,7 +14,7 @@ enum CameraSettingsAction { removeCamera }
 class SettingsPage extends StatefulWidget {
   final String cameraName;
   final String? previewFirmwareVersion;
-  final int? previewOsVersion;
+  final String? previewOsVersion;
   final String? previewSelectedResolution;
   final int? previewSelectedFps;
   final bool? previewNotificationsEnabled;
@@ -51,7 +51,7 @@ class _SettingsPageState extends State<SettingsPage> {
   bool notificationsEnabled = true;
   bool preRollEnabled = true;
   String? firmwareVersion;
-  int? osVersion;
+  String? osVersion;
 
   // Options: user can select "All" or choose specific events like Motion, Humans, Vehicles, or Pets.
   final List<String> notificationOptions = [
@@ -91,7 +91,7 @@ class _SettingsPageState extends State<SettingsPage> {
       firmwareVersion = prefs.getString(
         PrefKeys.firmwareVersionPrefix + widget.cameraName,
       );
-      osVersion = prefs.getInt(
+      osVersion = prefs.getString(
         PrefKeys.cameraOsVersionPrefix + widget.cameraName,
       );
       notificationsEnabled =
@@ -280,7 +280,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   if (osVersion != null)
                     ShellSettingsRow(
                       title: 'OS Version',
-                      value: osVersion!.toString(),
+                      value: osVersion!,
                       trailing: const SizedBox.shrink(),
                       height: metrics.shortRowHeight,
                       horizontalPadding: metrics.rowHorizontalPadding,

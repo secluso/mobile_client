@@ -175,7 +175,7 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                       PrefKeys.firmwareVersionPrefix + cameraName,
                       versionInfo.firmwareVersion,
                     );
-                    await prefs.setInt(
+                    await prefs.setString(
                       PrefKeys.cameraOsVersionPrefix + cameraName,
                       versionInfo.osVersion,
                     );
