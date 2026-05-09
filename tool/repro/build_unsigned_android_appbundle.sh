@@ -43,6 +43,7 @@ export RUSTUP_HOME="${RUSTUP_HOME:-/opt/rustup}"
 export CARGOKIT_RUST_TOOLCHAIN="${CARGOKIT_RUST_TOOLCHAIN:-1.90.0}"
 export SECLUSO_FLUTTER_VERBOSE="${SECLUSO_FLUTTER_VERBOSE:-0}"
 export SECLUSO_FDROID_BUILD="${SECLUSO_FDROID_BUILD:-0}"
+export SECLUSO_REPRO_GRADLE_JVMARGS="${SECLUSO_REPRO_GRADLE_JVMARGS:-}"
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-$SECLUSO_REPRO_MAX_WORKERS}"
 export CARGO_INCREMENTAL=0
 export SECLUSO_REPRO_CLEAN="${SECLUSO_REPRO_CLEAN:-0}"
@@ -94,6 +95,16 @@ cat > "$REPO_ROOT/android/local.properties" <<EOF
 sdk.dir=$ANDROID_HOME
 flutter.sdk=$FLUTTER_HOME
 EOF
+
+if [[ -n "$SECLUSO_REPRO_GRADLE_JVMARGS" ]]; then
+  log_step "Applying reproducible Gradle JVM args"
+  gradle_properties="$REPO_ROOT/android/gradle.properties"
+  if grep -q '^org\.gradle\.jvmargs=' "$gradle_properties"; then
+    sed -i "s|^org\.gradle\.jvmargs=.*|org.gradle.jvmargs=$SECLUSO_REPRO_GRADLE_JVMARGS|" "$gradle_properties"
+  else
+    printf '\norg.gradle.jvmargs=%s\n' "$SECLUSO_REPRO_GRADLE_JVMARGS" >> "$gradle_properties"
+  fi
+fi
 
 if [[ "$SECLUSO_REPRO_CLEAN" == "1" ]]; then
   log_step "Cleaning prior build outputs"

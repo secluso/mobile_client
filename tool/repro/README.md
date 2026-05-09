@@ -52,6 +52,18 @@ That builds the unsigned Android App Bundle in Docker and puts it here:
 build/reproducible/app-release-unsigned.aab
 ```
 
+Recommended safe reproducibility check
+
+When verifying reproducibility from a dirty local environment, use this command:
+
+```bash
+env SECLUSO_REPRO_CLEAN=1 SECLUSO_REPRO_USE_HOST_CACHES=0 SECLUSO_REPRO_GRADLE_JVMARGS='-Xmx2G -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError' tool/repro/build_aab_with_docker.sh
+```
+
+- SECLUSO_REPRO_CLEAN=1 removes the copied workspace's Flutter, Android, and Rust build outputs before building. 
+- SECLUSO_REPRO_USE_HOST_CACHES=0 avoids mounting the host Gradle and Dart package caches into the container
+- SECLUSO_REPRO_GRADLE_JVMARGS=.. caps the Gradle and Kotlin daemon heaps. On Docker Desktop, the default android/gradle.properties heap can reserve too much memory during the clean native build and the Gradle daemon may disappear. 
+
 The same F-Droid switch works for the App Bundle path:
 
 ```bash
@@ -144,7 +156,7 @@ build/reproducible/app-release-signed.aab
 build/reproducible/app-release-signed.aab.sha256
 ```
 
-One thing that might happen is that the build fails at flutter pub get --enforce-lockfile. If that happens, it means the committed pubspec.lock no longer matches what the pinned Docker toolchain resolves for the current pubspec.yaml. In that case, update the lockfile with:
+One thing that might happen is that the Docker build fails at flutter pub get --enforce-lockfile. If that happens, it means the committed pubspec.lock no longer matches what the pinned Docker toolchain resolves for the current pubspec.yaml. In that case, update the lockfile with:
 
 ```bash
 tool/repro/update_lockfile_with_docker.sh

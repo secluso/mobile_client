@@ -93,6 +93,7 @@ copy_workspace() {
     -a
     --exclude '.git'
     --exclude 'android/local.properties'
+    --exclude 'android/app/src/main/jniLibs'
     --exclude '.secluso-repro-cache'
     --exclude 'build'
     --exclude 'ios/Pods'

@@ -37,6 +37,7 @@ rsync_args=(
   --exclude '.git'
   --exclude '.secluso-repro-cache'
   --exclude 'android/local.properties'
+  --exclude 'android/app/src/main/jniLibs'
   --exclude 'build'
   --exclude 'ios/Pods'
 )
@@ -56,6 +57,7 @@ else
 fi
 
 rsync "${rsync_args[@]}" "$SOURCE_ROOT/" "$LOCAL_ROOT/"
+rm -rf "$LOCAL_ROOT/android/app/src/main/jniLibs"
 
 seed_local_cache_dir() {
   local relative_path="$1"

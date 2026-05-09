@@ -64,8 +64,12 @@ docker run --rm \
   --platform "$DOCKER_PLATFORM" \
   -e SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-1704067200}" \
   -e SECLUSO_FDROID_BUILD="${SECLUSO_FDROID_BUILD:-0}" \
+  -e SECLUSO_REPRO_CLEAN="${SECLUSO_REPRO_CLEAN:-0}" \
+  -e SECLUSO_REPRO_GRADLE_JVMARGS="${SECLUSO_REPRO_GRADLE_JVMARGS:-}" \
+  -e SECLUSO_REPRO_MAX_WORKERS="${SECLUSO_REPRO_MAX_WORKERS:-}" \
+  -e SECLUSO_REPRO_SYNC_BACK_FAST_CACHES="${SECLUSO_REPRO_SYNC_BACK_FAST_CACHES:-1}" \
   -v "$REPO_ROOT":/workspace \
-  "${DOCKER_CACHE_VOLUMES[@]}" \
+  ${DOCKER_CACHE_VOLUMES+"${DOCKER_CACHE_VOLUMES[@]}"} \
   "$IMAGE_TAG" \
   /workspace/tool/repro/run_build_in_container_workspace.sh \
     tool/repro/build_unsigned_android_appbundle.sh
