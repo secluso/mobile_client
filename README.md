@@ -2,8 +2,9 @@
 **Developer Quick-Start Guide (Android & iOS)**
 
 > Use this guide to build the Secluso mobile application from source.  
-> Important: Complete all core setup steps in [`our build your own guide`](https://secluso.com/build-your-own) before continuing.
-> Important: You do not need to build this yourself unless you're a developer. We have published on the iOS App Store and Google Play App Store. Please see below.
+> **Important**: Complete all core setup steps in [`our build your own guide`](https://secluso.com/build-your-own) before continuing.
+
+> **Important**: You do not need to build this yourself unless you're a developer. We have published on the iOS App Store and Google Play App Store. Please see below.
 
 [iOS Mobile App](https://apps.apple.com/us/app/secluso/id6756543429) • [Android Mobile App](https://play.google.com/store/apps/details?id=com.secluso.mobile)
 
