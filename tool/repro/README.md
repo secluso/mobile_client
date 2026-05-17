@@ -60,6 +60,8 @@ When verifying reproducibility from a dirty local environment, use this command:
 env SECLUSO_REPRO_CLEAN=1 SECLUSO_REPRO_USE_HOST_CACHES=0 SECLUSO_REPRO_GRADLE_JVMARGS='-Xmx2G -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError' tool/repro/build_aab_with_docker.sh
 ```
 
+Note, when running from a Linux machine, it may need to be run using sudo. You may need to omit the gradle JVM arguments.
+
 - SECLUSO_REPRO_CLEAN=1 removes the copied workspace's Flutter, Android, and Rust build outputs before building. 
 - SECLUSO_REPRO_USE_HOST_CACHES=0 avoids mounting the host Gradle and Dart package caches into the container
 - SECLUSO_REPRO_GRADLE_JVMARGS=.. caps the Gradle and Kotlin daemon heaps. On Docker Desktop, the default android/gradle.properties heap can reserve too much memory during the clean native build and the Gradle daemon may disappear. 
