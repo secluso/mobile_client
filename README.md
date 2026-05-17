@@ -2,7 +2,10 @@
 **Developer Quick-Start Guide (Android & iOS)**
 
 > Use this guide to build the Secluso mobile application from source.  
-> Important: Complete all core setup steps in [`HOW_TO.md`](https://github.com/secluso/secluso/blob/main/HOW_TO.md) before continuing.
+> Important: Complete all core setup steps in [`our build your own guide`](https://secluso.com/build-your-own) before continuing.
+> Important: You do not need to build this yourself unless you're a developer. We have published on the iOS App Store and Google Play App Store. Please see below.
+
+[iOS Mobile App](https://apps.apple.com/us/app/secluso/id6756543429) • [Android Mobile App](https://play.google.com/store/apps/details?id=com.secluso.mobile)
 
 ---
 
@@ -118,46 +121,6 @@ python3 tool/repro/apkdiff.py \
 ```
 
 For the full reproducible-build workflow, signed-release path, and internal reproducibility test (`tool/repro/check_reproducibility.sh`), see `tool/repro/README.md`.
-
----
-
-## 8. Special F-Droid Android Build
-
-The app supports a special Android build mode for F-Droid that forces UnifiedPush and excludes Firebase from the Android dependency graph.
-
-Build it with:
-
-```bash
-tool/fdroid/build_fdroid_apk.sh
-```
-
-What this does:
-
-- Forces Android push transport to UnifiedPush
-- Excludes the Android `firebase_core` and `firebase_messaging` plugin projects
-- Excludes the direct native `com.google.firebase:firebase-messaging` dependency
-- Generates an F-Droid-specific `GeneratedPluginRegistrant` without Firebase or `integration_test`
-
-Important note:
-
-- The Dart packages `firebase_core` and `firebase_messaging` still remain in `pubspec.yaml` for normal App Store / Play builds.
-- That does not break the F-Droid build by itself. Flutter/Dart imports are resolved at the Dart package level, while Android plugin registration is a separate native step.
-- In the F-Droid build, the Firebase Android plugins are not registered, and the Android push flow is routed through UnifiedPush instead of FCM.
-- Because the F-Droid runtime avoids the FCM code paths, the remaining Dart imports do not trigger Firebase runtime errors on Android.
-
-Verification commands:
-
-```bash
-SECLUSO_FDROID_BUILD=1 ./android/gradlew -p android app:properties --console=plain
-SECLUSO_FDROID_BUILD=1 ./android/gradlew -p android app:dependencies --configuration debugRuntimeClasspath --console=plain
-```
-
-On the F-Droid build, the runtime classpath should include `project :unifiedpush_android` and should not include `firebase_core`, `firebase_messaging`, or `com.google.firebase:*`.
-
-Submission prep files for Fdroid are available here:
-
-- fastlane/metadata/android/en-US/
-- fdroid/com.secluso.mobile.yml
 
 ---
 
