@@ -1,0 +1,31 @@
+name: Check Reproducibility of Android AAB
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+concurrency:
+  group: android-aab-repro-check-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-reproducible-linux-deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.label.name == 'verify-android-aab-reproducible'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Run build script
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          env SECLUSO_REPRO_CLEAN=1 SECLUSO_REPRO_USE_HOST_CACHES=0 SECLUSO_REPRO_GRADLE_JVMARGS='-Xmx2G -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError' tool/repro/build_aab_with_docker.sh
