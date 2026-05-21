@@ -5,13 +5,16 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:secluso_flutter/constants.dart';
+import 'package:secluso_flutter/utilities/camera_proxy.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
 
 class ProprietaryCameraHotspot {
   static const MethodChannel _wifiChannel = MethodChannel("secluso.com/wifi");
   static const String ssid = 'Secluso';
-  static const Duration _reconnectThrottle = Duration(seconds: 3);
+  // connect() is destructive on iOS
+  // iOS needs ~10-15s to bring the route up
+  static const Duration _reconnectThrottle = Duration(seconds: 15);
 
   static Future<String?> connect(String password) {
     return _wifiChannel.invokeMethod<String>('connectToWifi', <String, dynamic>{
@@ -41,6 +44,10 @@ class ProprietaryCameraHotspot {
     String cameraIp = Constants.proprietaryCameraIp,
   }) async {
     try {
+      // probe on iOS via Network.framework, which honors the Local Network grant and Wi-Fi.
+      if (Platform.isIOS) {
+        return await CameraProxyBridge.probe();
+      }
       return await pingProprietaryDevice(cameraIp: cameraIp);
     } catch (e) {
       Log.w("Camera hotspot probe failed: $e");
@@ -58,7 +65,8 @@ class ProprietaryCameraHotspot {
     required String password,
   }) async {
     final deadline = DateTime.now().add(timeout);
-    DateTime? lastReconnectAttempt;
+    // Seed the reconnect clock to now() so the first poll doesn't immediately tear down the connection connect() just established
+    DateTime? lastReconnectAttempt = DateTime.now();
     var stablePolls = 0;
 
     while (DateTime.now().isBefore(deadline)) {

@@ -146,7 +146,7 @@ class _ProprietaryCameraConnectDialogState
     try {
       final connected = await ProprietaryCameraHotspot.waitUntilReady(
         cameraIp: Constants.proprietaryCameraIp,
-        timeout: const Duration(seconds: 20),
+        timeout: const Duration(seconds: 30),
         reconnectIfNeeded: Platform.isIOS,
         password: widget.hotspotPassword,
       );

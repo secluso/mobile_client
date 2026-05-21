@@ -63,6 +63,10 @@
 	<string>Please allow access to the camera to scan QR codes</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app requires access to devices on your local network.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_http._tcp</string>
+	</array>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>We need access to save videos to your photo library</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
