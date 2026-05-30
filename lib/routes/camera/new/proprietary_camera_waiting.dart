@@ -26,6 +26,7 @@ import 'package:secluso_flutter/routes/home_page.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
 import 'package:secluso_flutter/utilities/app_coordination_state.dart';
 import 'package:secluso_flutter/utilities/app_paths.dart';
+import 'package:secluso_flutter/utilities/camera_proxy.dart';
 import 'package:secluso_flutter/utilities/camera_version_info.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
 import 'package:secluso_flutter/utilities/proprietary_camera_hotspot.dart';
@@ -315,7 +316,7 @@ class _ProprietaryCameraWaitingDialogState
 
       final hotspotReady = await ProprietaryCameraHotspot.waitUntilReady(
         cameraIp: Constants.proprietaryCameraIp,
-        timeout: const Duration(seconds: 12),
+        timeout: const Duration(seconds: 35),
         reconnectIfNeeded: Platform.isIOS,
         password: widget.hotspotPassword,
       );
@@ -330,9 +331,22 @@ class _ProprietaryCameraWaitingDialogState
         return;
       }
 
+      // route the Rust pairing connection through the native Network.framework loopback proxy for iOS.
+      var cameraIp = Constants.proprietaryCameraIp;
+      if (Platform.isIOS) {
+        final proxyReady = await CameraProxyBridge.startProxy();
+        if (!proxyReady) {
+          if (!mounted) return;
+          Log.w('Pairing failed before addCamera: camera proxy unavailable');
+          setState(() => _errorMessage = "Failed to connect to the camera.");
+          return;
+        }
+        cameraIp = CameraProxyBridge.loopbackIp;
+      }
+
       final versionInfoJson = await addCamera(
         widget.cameraName,
-        Constants.proprietaryCameraIp,
+        cameraIp,
         List<int>.from(widget.qrCode!),
         true,
         widget.wifiSsid,

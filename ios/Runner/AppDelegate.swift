@@ -1,6 +1,7 @@
 //! SPDX-License-Identifier: GPL-3.0-or-later
 import AVFoundation
 import Flutter
+import Network
 import NetworkExtension
 import SystemConfiguration.CaptiveNetwork
 import UIKit
@@ -9,10 +10,16 @@ import workmanager_apple
 
 @main
 @objc class AppDelegate: FlutterAppDelegate {
+    private var localNetworkPromptBrowser: NWBrowser?
+
     override func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
     ) -> Bool {
+        // Rust uses raw BSD sockets, which iOS silently denies until the user grants Local Network access.
+        // so we trigger them ourselves
+        triggerLocalNetworkPrompt()
+
         WorkmanagerPlugin.registerPeriodicTask(
             withIdentifier: "periodic_heartbeat_task",
             frequency: NSNumber(value: 6 * 60 * 60)
@@ -35,6 +42,7 @@ import workmanager_apple
 
         let controller: FlutterViewController = window?.rootViewController as! FlutterViewController
         IosPushRelayBridge.shared.register(with: controller)
+        CameraProxy.shared.register(with: controller.binaryMessenger)
         let storage = FlutterMethodChannel(
             name: "secluso.com/storage",
             binaryMessenger: controller.binaryMessenger)
@@ -106,8 +114,10 @@ import workmanager_apple
                     password.isEmpty
                     ? NEHotspotConfiguration(ssid: ssid)
                     : NEHotspotConfiguration(ssid: ssid, passphrase: password, isWEP: false)
-                config.joinOnce = true
 
+                let appState = UIApplication.shared.applicationState
+                // Clear any stale/half-installed config for this SSID first
+                NEHotspotConfigurationManager.shared.removeConfiguration(forSSID: ssid)
                 NEHotspotConfigurationManager.shared.apply(config) { error in
                     if let error = error {
                         let nsError = error as NSError
@@ -117,9 +127,15 @@ import workmanager_apple
                             result("connected")
                             return
                         }
+                        let diagnostics =
+                            "domain=\(nsError.domain) code=\(nsError.code) "
+                            + "desc=\(error.localizedDescription) appState=\(appState.rawValue)"
+                        print("[WIFI] connectToWifi failed: \(diagnostics)")
                         result(
                             FlutterError(
-                                code: "FAILED", message: error.localizedDescription, details: nil))
+                                code: "FAILED",
+                                message: error.localizedDescription,
+                                details: diagnostics))
                     } else {
                         result("connected")
                     }
@@ -270,6 +286,29 @@ import workmanager_apple
         )
     }
 
+    private func triggerLocalNetworkPrompt() {
+        guard localNetworkPromptBrowser == nil else { return }
+        let parameters = NWParameters()
+        parameters.includePeerToPeer = true
+        let browser = NWBrowser(
+            for: .bonjour(type: "_http._tcp", domain: nil),
+            using: parameters
+        )
+        browser.stateUpdateHandler = { [weak self] state in
+            switch state {
+            case .failed, .cancelled:
+                DispatchQueue.main.async {
+                    self?.localNetworkPromptBrowser?.cancel()
+                    self?.localNetworkPromptBrowser = nil
+                }
+            default:
+                break
+            }
+        }
+        localNetworkPromptBrowser = browser
+        browser.start(queue: .main)
+    }
+
     private static func excludeFromBackup(path: String) throws {
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
@@ -303,5 +342,260 @@ import workmanager_apple
         let url = URL(fileURLWithPath: path, isDirectory: isDirectory)
         let values = try url.resourceValues(forKeys: [.isExcludedFromBackupKey])
         return values.isExcludedFromBackup ?? false
+    }
+}
+
+// Bridges the Rust camera-pairing sockets through Network.framework.
+//
+// expose a loopback proxy: Rust connects to 127.0.0.1:12348 (loopback is never gated), and this class forwards the bytes to the camera over a Wi-Fi-pinned NWConnection. 
+final class CameraProxy {
+    static let shared = CameraProxy()
+
+    private let channelName = "secluso.com/camera_proxy"
+    // qualify it to resolve the ambiguity.
+    private let cameraHost: Network.NWEndpoint.Host = "10.42.0.1"
+    private let cameraPort: Network.NWEndpoint.Port = 12348
+    private let loopbackPort: Network.NWEndpoint.Port = 12348
+    private let queue = DispatchQueue(label: "com.secluso.cameraproxy")
+
+    private var listener: NWListener?
+    private var sessions: [ObjectIdentifier: ProxySession] = [:]
+    private var channel: FlutterMethodChannel?
+
+    private init() {}
+
+    func register(with messenger: FlutterBinaryMessenger) {
+        let channel = FlutterMethodChannel(name: channelName, binaryMessenger: messenger)
+        channel.setMethodCallHandler { [weak self] call, result in
+            self?.handle(call, result: result)
+        }
+        self.channel = channel
+    }
+
+    // Mirror native diagnostics into the Flutter in-app log stream
+    fileprivate func log(_ message: String) {
+        let line = "[CameraProxy] \(message)"
+        print(line)
+        DispatchQueue.main.async { [weak self] in
+            self?.channel?.invokeMethod("nativeLog", arguments: line)
+        }
+    }
+
+    private func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+        switch call.method {
+        case "probe":
+            probeCamera(result: result)
+        case "startProxy":
+            // hop onto it so the method-channel (main) thread never races the Network.framework callbacks.
+            queue.async { [weak self] in self?.startProxy(result: result) }
+        case "stopProxy":
+            queue.async { [weak self] in
+                self?.stopProxy()
+                DispatchQueue.main.async { result(nil) }
+            }
+        default:
+            result(FlutterMethodNotImplemented)
+        }
+    }
+
+    // forces the camera connection onto the Wi-Fi interface so iOS scoped routing can't send it out cellular.
+    private func cameraParameters() -> NWParameters {
+        let tcpOptions = NWProtocolTCP.Options()
+        tcpOptions.connectionTimeout = 5
+        tcpOptions.noDelay = true
+        let params = NWParameters(tls: nil, tcp: tcpOptions)
+        params.requiredInterfaceType = .wifi
+        params.prohibitedInterfaceTypes = [.cellular]
+        return params
+    }
+
+    private func probeCamera(result: @escaping FlutterResult) {
+        let conn = NWConnection(host: cameraHost, port: cameraPort, using: cameraParameters())
+        var settled = false
+        let settle: (Bool, String) -> Void = { reachable, reason in
+            DispatchQueue.main.async {
+                if settled { return }
+                settled = true
+                conn.cancel()
+                self.log("probe result reachable=\(reachable) (\(reason))")
+                // Return the detail too so the Dart side can log it into the in-app log stream 
+                result(["reachable": reachable, "detail": reason])
+            }
+        }
+        conn.stateUpdateHandler = { (state: NWConnection.State) in
+            switch state {
+            case .ready:
+                let ifaces = conn.currentPath?.availableInterfaces
+                    .map { "\($0.type)" }.joined(separator: ",") ?? "?"
+                self.log("probe ready (interfaces=\(ifaces))")
+                settle(true, "ready")
+            case .preparing:
+                self.log("probe preparing")
+            case .waiting(let error):
+                // A transient .waiting can still recover to .ready
+                self.log("probe waiting: \(error)")
+            case .failed(let error):
+                self.log("probe failed: \(error)")
+                settle(false, "failed: \(error)")
+            case .cancelled:
+                settle(false, "cancelled")
+            default:
+                break
+            }
+        }
+        conn.start(queue: queue)
+        queue.asyncAfter(deadline: .now() + 3) {
+            settle(false, "timeout")
+        }
+    }
+
+    // Replies on the main thread.
+    private func startProxy(result: @escaping FlutterResult) {
+        let reply: (Any?) -> Void = { value in
+            DispatchQueue.main.async { result(value) }
+        }
+        if listener != nil {
+            reply(NSNumber(value: loopbackPort.rawValue))
+            return
+        }
+        do {
+            let params = NWParameters.tcp
+            params.requiredInterfaceType = .loopback
+            params.allowLocalEndpointReuse = true
+            let newListener = try NWListener(using: params, on: loopbackPort)
+            newListener.newConnectionHandler = { [weak self] inbound in
+                self?.handleInbound(inbound)
+            }
+            newListener.stateUpdateHandler = { [weak self] (state: NWListener.State) in
+                switch state {
+                case .failed(let error):
+                    self?.log("listener failed: \(error)")
+                    self?.listener = nil
+                case .ready:
+                    self?.log("listener ready on 127.0.0.1")
+                default:
+                    break
+                }
+            }
+            newListener.start(queue: queue)
+            listener = newListener
+            reply(NSNumber(value: loopbackPort.rawValue))
+        } catch {
+            log("startProxy failed: \(error)")
+            reply(FlutterError(code: "PROXY_START_FAILED", message: "\(error)", details: nil))
+        }
+    }
+
+    private func stopProxy() {
+        listener?.cancel()
+        listener = nil
+        for session in sessions.values {
+            session.close()
+        }
+        sessions.removeAll()
+    }
+
+    // Runs on queue
+    private func handleInbound(_ inbound: NWConnection) {
+        log("proxy: inbound loopback connection, dialing camera")
+        let session = ProxySession(
+            inbound: inbound,
+            outbound: NWConnection(host: cameraHost, port: cameraPort, using: cameraParameters()),
+            queue: queue,
+            log: { [weak self] message in self?.log(message) }
+        )
+        let id = ObjectIdentifier(session)
+        sessions[id] = session
+        session.onClose = { [weak self] in
+            self?.sessions[id] = nil
+        }
+        session.start()
+    }
+}
+
+// loopback connection
+private final class ProxySession {
+    private let inbound: NWConnection
+    private let outbound: NWConnection
+    private let queue: DispatchQueue
+    private let log: (String) -> Void
+    private var closed = false
+    var onClose: (() -> Void)?
+
+    init(
+        inbound: NWConnection,
+        outbound: NWConnection,
+        queue: DispatchQueue,
+        log: @escaping (String) -> Void
+    ) {
+        self.inbound = inbound
+        self.outbound = outbound
+        self.queue = queue
+        self.log = log
+    }
+
+    func start() {
+        outbound.stateUpdateHandler = { [weak self] (state: NWConnection.State) in
+            guard let self = self else { return }
+            switch state {
+            case .ready:
+                self.log("proxy: camera connection ready, forwarding bytes")
+                self.pump(from: self.inbound, to: self.outbound)
+                self.pump(from: self.outbound, to: self.inbound)
+            case .waiting(let error):
+                self.log("proxy: camera connection waiting: \(error)")
+                self.close()
+            case .failed(let error):
+                self.log("proxy: camera connection failed: \(error)")
+                self.close()
+            case .cancelled:
+                self.close()
+            default:
+                break
+            }
+        }
+        inbound.stateUpdateHandler = { [weak self] (state: NWConnection.State) in
+            switch state {
+            case .failed, .cancelled:
+                self?.close()
+            default:
+                break
+            }
+        }
+        inbound.start(queue: queue)
+        outbound.start(queue: queue)
+    }
+
+    private func pump(from src: NWConnection, to dst: NWConnection) {
+        src.receive(minimumIncompleteLength: 1, maximumLength: 65536) {
+            [weak self] data, _, isComplete, error in
+            guard let self = self else { return }
+            if let data = data, !data.isEmpty {
+                dst.send(
+                    content: data,
+                    completion: .contentProcessed { sendError in
+                        if sendError != nil {
+                            self.close()
+                        } else {
+                            self.pump(from: src, to: dst)
+                        }
+                    })
+            } else if isComplete || error != nil {
+                self.close()
+            } else {
+                self.pump(from: src, to: dst)
+            }
+        }
+    }
+
+    func close() {
+        queue.async { [weak self] in
+            guard let self = self, !self.closed else { return }
+            self.closed = true
+            self.inbound.cancel()
+            self.outbound.cancel()
+            self.log("proxy: session closed")
+            self.onClose?()
+        }
     }
 }
