@@ -70,8 +70,7 @@ class CameraUiBridge {
     final videos = await videoStore.listByCamera(cameraName);
     await videoStore.removeMany(videos.map((video) => video.id).toList());
 
-    final docsDir = await AppPaths.dataDirectory();
-    final camDir = Directory(p.join(docsDir.path, 'camera_dir_$cameraName'));
+    final camDir = await AppPaths.cameraDirectory(cameraName);
     if (await camDir.exists()) {
       try {
         await camDir.delete(recursive: true);
@@ -81,6 +80,7 @@ class CameraUiBridge {
       }
     }
 
+    final docsDir = await AppPaths.dataDirectory();
     final lock = File(
       p.join(docsDir.path, 'locks', 'thumbnail$cameraName.lock'),
     );

@@ -648,8 +648,7 @@ class HttpClientService {
     final headers = await _basicAuthHeaders(creds.username, creds.password);
     headers['X-Command-Size'] = command.length.toString();
 
-    final response = await http
-        .post(url, headers: headers, body: command);
+    final response = await http.post(url, headers: headers, body: command);
 
     await _handleServerVersionHeader(response);
 
@@ -861,8 +860,8 @@ class HttpClientService {
   }
 
   Future<Directory> _ensureEncryptedDir(String cameraName) async {
-    final base = await AppPaths.dataDirectory();
-    final dir = Directory('${base.path}/camera_dir_$cameraName/encrypted');
+    final cameraDir = await AppPaths.cameraDirectory(cameraName);
+    final dir = Directory('${cameraDir.path}/encrypted');
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }

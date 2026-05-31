@@ -2,7 +2,6 @@
 
 import 'dart:async';
 import 'dart:io';
-import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/utilities/app_paths.dart';
@@ -220,10 +219,7 @@ Future<bool> initializeCore(String cameraName, bool firstTime) async {
     return false;
   }
 
-  var filesDir = p.join(
-    (await AppPaths.dataDirectory()).absolute.path,
-    'camera_dir_$cameraName',
-  );
+  var filesDir = (await AppPaths.cameraDirectory(cameraName)).absolute.path;
 
   var videosDir = "$filesDir/videos";
   var encryptedDir = "$filesDir/encrypted";

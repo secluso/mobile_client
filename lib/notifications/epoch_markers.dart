@@ -9,8 +9,8 @@ String _markerName(String kind, int epoch) {
 }
 
 Future<File> _markerFile(String cameraName, String kind, int epoch) async {
-  final base = await AppPaths.dataDirectory();
-  final dir = p.join(base.path, 'camera_dir_$cameraName', 'videos');
+  final cameraDir = await AppPaths.cameraDirectory(cameraName);
+  final dir = p.join(cameraDir.path, 'videos');
   return File(p.join(dir, _markerName(kind, epoch)));
 }
 

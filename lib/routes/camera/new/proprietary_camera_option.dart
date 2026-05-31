@@ -1,7 +1,7 @@
 //! SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'dart:math' as math;
-import 'dart:io' show Platform, Directory;
+import 'dart:io' show Platform;
 
 import 'dart:async';
 import 'package:secluso_flutter/constants.dart';
@@ -19,7 +19,6 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:path/path.dart' as p;
 import 'package:secluso_flutter/utilities/app_paths.dart';
 
 /// Popup: User connects to camera's Wi-Fi hotspot.
@@ -1419,10 +1418,7 @@ class _ProprietaryCameraInfoDialogState
       HttpClientService.instance.clearGroupNameCache(lastCameraAdd);
       await sharedPreferences.remove(PrefKeys.lastCameraAdd);
 
-      final docsDir = await AppPaths.dataDirectory();
-      final camDir = Directory(
-        p.join(docsDir.path, 'camera_dir_$lastCameraAdd'),
-      );
+      final camDir = await AppPaths.cameraDirectory(lastCameraAdd);
       if (await camDir.exists()) {
         try {
           await camDir.delete(recursive: true);

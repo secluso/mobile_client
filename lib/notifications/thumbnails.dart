@@ -177,11 +177,10 @@ class ThumbnailManager {
       return false;
     }
     // Check if the file already exists in the thumbnails folder
-    final baseDir = await AppPaths.dataDirectory();
+    final cameraDir = await AppPaths.cameraDirectory(camera);
 
     final filePath = p.join(
-      baseDir.path,
-      'camera_dir_$camera',
+      cameraDir.path,
       'videos',
       "thumbnail_$timestamp.png",
     );
@@ -375,10 +374,9 @@ class ThumbnailManager {
                 );
                 if (markerPayload != null &&
                     _isThumbnailFilename(markerPayload)) {
-                  final baseDir = await AppPaths.dataDirectory();
+                  final cameraDir = await AppPaths.cameraDirectory(camera);
                   final decPath = p.join(
-                    baseDir.path,
-                    'camera_dir_$camera',
+                    cameraDir.path,
                     'videos',
                     markerPayload,
                   );
@@ -460,13 +458,8 @@ class ThumbnailManager {
               );
               if (markerPayload != null &&
                   _isThumbnailFilename(markerPayload)) {
-                final baseDir = await AppPaths.dataDirectory();
-                final decPath = p.join(
-                  baseDir.path,
-                  'camera_dir_$camera',
-                  'videos',
-                  markerPayload,
-                );
+                final cameraDir = await AppPaths.cameraDirectory(camera);
+                final decPath = p.join(cameraDir.path, 'videos', markerPayload);
                 if (await File(decPath).exists()) {
                   await _logThumbnailFileState(
                     camera,
@@ -496,12 +489,8 @@ class ThumbnailManager {
             }
 
             if (!decFileName.startsWith("Error")) {
-              final decPath = p.join(
-                baseDir.path,
-                'camera_dir_$camera',
-                'videos',
-                decFileName,
-              );
+              final cameraDir = await AppPaths.cameraDirectory(camera);
+              final decPath = p.join(cameraDir.path, 'videos', decFileName);
               final ready = await _waitForStablePng(decPath);
               if (!ready) {
                 Log.e("Thumbnail file not ready or invalid: $decPath");
@@ -681,10 +670,9 @@ class ThumbnailManager {
                 );
                 if (markerPayload != null &&
                     _isThumbnailFilename(markerPayload)) {
-                  final baseDir = await AppPaths.dataDirectory();
+                  final cameraDir = await AppPaths.cameraDirectory(camera);
                   final decPath = p.join(
-                    baseDir.path,
-                    'camera_dir_$camera',
+                    cameraDir.path,
                     'videos',
                     markerPayload,
                   );
@@ -765,13 +753,8 @@ class ThumbnailManager {
               );
               if (markerPayload != null &&
                   _isThumbnailFilename(markerPayload)) {
-                final baseDir = await AppPaths.dataDirectory();
-                final decPath = p.join(
-                  baseDir.path,
-                  'camera_dir_$camera',
-                  'videos',
-                  markerPayload,
-                );
+                final cameraDir = await AppPaths.cameraDirectory(camera);
+                final decPath = p.join(cameraDir.path, 'videos', markerPayload);
                 if (await File(decPath).exists()) {
                   await _logThumbnailFileState(
                     camera,
@@ -798,12 +781,8 @@ class ThumbnailManager {
             }
 
             if (!decFileName.startsWith("Error")) {
-              final decPath = p.join(
-                baseDir.path,
-                'camera_dir_$camera',
-                'videos',
-                decFileName,
-              );
+              final cameraDir = await AppPaths.cameraDirectory(camera);
+              final decPath = p.join(cameraDir.path, 'videos', decFileName);
               final ready = await _waitForStablePng(decPath);
               if (!ready) {
                 Log.e("Thumbnail file not ready or invalid: $decPath");

@@ -1242,10 +1242,8 @@ class CamerasPageState extends State<CamerasPage>
   }
 
   Future<bool> _videoFileExists(String cameraName, String videoFile) async {
-    final docsDir = await AppPaths.dataDirectory();
-    final file = File(
-      p.join(docsDir.path, 'camera_dir_$cameraName', 'videos', videoFile),
-    );
+    final cameraDir = await AppPaths.cameraDirectory(cameraName);
+    final file = File(p.join(cameraDir.path, 'videos', videoFile));
     return file.exists();
   }
 

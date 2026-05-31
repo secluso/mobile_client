@@ -44,12 +44,8 @@ class VideoThumbnailStore {
 
     final future = () async {
       try {
-        final docsDir = await AppPaths.dataDirectory();
-        final videosDir = p.join(
-          docsDir.path,
-          'camera_dir_$cameraName',
-          'videos',
-        );
+        final cameraDir = await AppPaths.cameraDirectory(cameraName);
+        final videosDir = p.join(cameraDir.path, 'videos');
         final thumbPath = p.join(videosDir, 'thumbnail_$timestamp.png');
 
         final existingBytes = await _readValidatedImageBytes(thumbPath);

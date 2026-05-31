@@ -490,13 +490,8 @@ Future<bool> retrieveVideos(String cameraName) async {
                 epoch,
               );
               if (markerPayload != null) {
-                final baseDir = await AppPaths.dataDirectory();
-                final decPath = p.join(
-                  baseDir.path,
-                  'camera_dir_$cameraName',
-                  'videos',
-                  markerPayload,
-                );
+                final cameraDir = await AppPaths.cameraDirectory(cameraName);
+                final decPath = p.join(cameraDir.path, 'videos', markerPayload);
                 final decFile = File(decPath);
                 if (await decFile.exists()) {
                   await _enqueuePendingVideo(cameraName, markerPayload);
