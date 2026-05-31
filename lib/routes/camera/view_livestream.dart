@@ -368,15 +368,10 @@ class _LivestreamPageState extends State<LivestreamPage>
 
   Future<void> _writeArchiveChunk(Uint8List dec) async {
     if (!_archiveInitialized) {
-      final baseDir = await AppPaths.dataDirectory();
+      final cameraDir = await AppPaths.cameraDirectory(widget.cameraName);
       final timestamp = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final videoName = 'video_$timestamp.mp4';
-      final filePath = p.join(
-        baseDir.path,
-        'camera_dir_${widget.cameraName}',
-        'videos',
-        videoName,
-      );
+      final filePath = p.join(cameraDir.path, 'videos', videoName);
 
       final parentDir = Directory(p.dirname(filePath));
       if (!await parentDir.exists()) {

@@ -94,6 +94,36 @@ import workmanager_apple
                 result(FlutterMethodNotImplemented)
             }
         }
+
+        // This is to give Dart access to FileManager.containerURL
+        // In app_paths.dart, it needs to find the App Group container path on iOS
+        // (as this is where the NSE and main app share state)
+        let appGroup = FlutterMethodChannel(
+            name: "secluso.com/app_group",
+            binaryMessenger: controller.binaryMessenger
+        )
+        appGroup.setMethodCallHandler { call, result in
+            switch call.method {
+            case "getContainerPath":
+                guard let args = call.arguments as? [String: Any],
+                    let identifier = args["identifier"] as? String,
+                    !identifier.isEmpty
+                else {
+                    result(
+                        FlutterError(
+                            code: "INVALID_ARGS",
+                            message: "Missing App Group identifier",
+                            details: nil))
+                    return
+                }
+                let url = FileManager.default.containerURL(
+                    forSecurityApplicationGroupIdentifier: identifier
+                )
+                result(url?.path)
+            default:
+                result(FlutterMethodNotImplemented)
+            }
+        }
         let wifi = FlutterMethodChannel(
             name: "secluso.com/wifi",
             binaryMessenger: controller.binaryMessenger)

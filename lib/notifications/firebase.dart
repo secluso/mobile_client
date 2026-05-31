@@ -781,8 +781,8 @@ class PushNotificationService {
         );
 
         final docs = await AppPaths.dataDirectory();
-        final thumbPath =
-            '${docs.path}/camera_dir_$cameraName/videos/thumbnail_$timestamp.png';
+        final cameraDir = await AppPaths.cameraDirectory(cameraName);
+        final thumbPath = '${cameraDir.path}/videos/thumbnail_$timestamp.png';
 
         try {
           final bytes = await File(thumbPath).readAsBytes();

@@ -12,8 +12,6 @@ import 'package:secluso_flutter/routes/camera/new/ip_camera_waiting.dart';
 import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/ui/google_fonts.dart';
 import 'package:flutter/services.dart';
-import 'dart:io' show Directory;
-import 'package:path/path.dart' as p;
 
 class IpCameraDialog extends StatefulWidget {
   const IpCameraDialog({
@@ -83,10 +81,7 @@ class _IpCameraDialogState extends State<IpCameraDialog> {
         HttpClientService.instance.clearGroupNameCache(lastCameraName);
         prefs.remove(PrefKeys.lastCameraAdd);
 
-        final docsDir = await AppPaths.dataDirectory();
-        final camDir = Directory(
-          p.join(docsDir.path, 'camera_dir_$lastCameraName'),
-        );
+        final camDir = await AppPaths.cameraDirectory(lastCameraName);
         if (await camDir.exists()) {
           try {
             await camDir.delete(recursive: true);

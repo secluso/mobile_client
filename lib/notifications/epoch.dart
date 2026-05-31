@@ -11,8 +11,8 @@ Future<int> readEpoch(
   String type, {
   int defaultValue = 2,
 }) async {
-  final dir = await AppPaths.dataDirectory();
-  final path = p.join(dir.path, 'camera_dir_$cameraName', 'epoch_$type');
+  final cameraDir = await AppPaths.cameraDirectory(cameraName);
+  final path = p.join(cameraDir.path, 'epoch_$type');
   final f = File(path);
 
   try {
@@ -33,8 +33,7 @@ Future<int> readEpoch(
 /// 3) close
 /// 4) rename temp -> final (atomic on POSIX filesystems)
 Future<void> writeEpoch(String cameraName, String type, int value) async {
-  final dir = await AppPaths.dataDirectory();
-  final cameraDir = Directory(p.join(dir.path, 'camera_dir_$cameraName'));
+  final cameraDir = await AppPaths.cameraDirectory(cameraName);
   if (!await cameraDir.exists()) {
     await cameraDir.create(recursive: true);
   }

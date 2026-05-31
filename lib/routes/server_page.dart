@@ -13,6 +13,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/notifications/android_push_transport.dart';
 import 'package:secluso_flutter/notifications/firebase.dart';
+import 'package:secluso_flutter/notifications/nse_bridge.dart';
 import 'package:secluso_flutter/notifications/unified_push_service.dart';
 import 'package:secluso_flutter/database/app_stores.dart';
 import 'package:secluso_flutter/database/entities.dart';
@@ -383,6 +384,9 @@ class _ServerPageState extends State<ServerPage> {
       await prefs.setString(PrefKeys.serverUsername, serverUsername);
       await prefs.setString(PrefKeys.serverPassword, serverPassword);
       await prefs.setString(PrefKeys.relayConnectionKind, relayConnectionKind);
+      // The iOS NotificationService extension needs these creds to fetch encrypted thumbnails from the relay
+      // So we push them into the App Group now
+      unawaited(NseBridge.exportCredentials());
       if (Platform.isAndroid) {
         await prefs.setString(
           PrefKeys.androidPushPlatform,

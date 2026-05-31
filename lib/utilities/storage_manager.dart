@@ -72,8 +72,8 @@ class StorageManager {
   static const int _keepForeverSentinel = 0;
 
   static Future<StorageSummary> calculateSummary() async {
-    final docsDir = await AppPaths.dataDirectory();
-    if (!await docsDir.exists()) {
+    final roots = await AppPaths.allDataRoots();
+    if (roots.every((d) => !d.existsSync())) {
       return const StorageSummary(
         totalBytes: 0,
         videoBytes: 0,
@@ -93,45 +93,48 @@ class StorageManager {
     var videoCount = 0;
     var thumbnailCount = 0;
 
-    await for (final entity in docsDir.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      if (entity is! File) continue;
-      final stat = await entity.stat();
-      final size = stat.size;
-      totalBytes += size;
-      final relativePath = p.relative(entity.path, from: docsDir.path);
-      final parts = p.split(relativePath);
+    for (final root in roots) {
+      if (!await root.exists()) continue;
+      await for (final entity in root.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File) continue;
+        final stat = await entity.stat();
+        final size = stat.size;
+        totalBytes += size;
+        final relativePath = p.relative(entity.path, from: root.path);
+        final parts = p.split(relativePath);
 
-      if (parts.length >= 3 &&
-          parts[0].startsWith('camera_dir_') &&
-          parts[1] == 'videos' &&
-          parts[2].startsWith('video_') &&
-          parts[2].endsWith('.mp4')) {
-        videoBytes += size;
-        videoCount += 1;
-        continue;
+        if (parts.length >= 3 &&
+            parts[0].startsWith('camera_dir_') &&
+            parts[1] == 'videos' &&
+            parts[2].startsWith('video_') &&
+            parts[2].endsWith('.mp4')) {
+          videoBytes += size;
+          videoCount += 1;
+          continue;
+        }
+
+        if (parts.length >= 3 &&
+            parts[0].startsWith('camera_dir_') &&
+            parts[1] == 'videos' &&
+            parts[2].startsWith('thumbnail_') &&
+            parts[2].endsWith('.png')) {
+          thumbnailBytes += size;
+          thumbnailCount += 1;
+          continue;
+        }
+
+        if (parts.length >= 3 &&
+            parts[0].startsWith('camera_dir_') &&
+            parts[1] == 'encrypted') {
+          encryptedBytes += size;
+          continue;
+        }
+
+        otherBytes += size;
       }
-
-      if (parts.length >= 3 &&
-          parts[0].startsWith('camera_dir_') &&
-          parts[1] == 'videos' &&
-          parts[2].startsWith('thumbnail_') &&
-          parts[2].endsWith('.png')) {
-        thumbnailBytes += size;
-        thumbnailCount += 1;
-        continue;
-      }
-
-      if (parts.length >= 3 &&
-          parts[0].startsWith('camera_dir_') &&
-          parts[1] == 'encrypted') {
-        encryptedBytes += size;
-        continue;
-      }
-
-      otherBytes += size;
     }
 
     return StorageSummary(
@@ -217,21 +220,24 @@ class StorageManager {
   }
 
   static Future<StorageCleanupResult> clearAllThumbnails() async {
-    final docsDir = await AppPaths.dataDirectory();
+    final roots = await AppPaths.allDataRoots();
     var bytesFreed = 0;
     var deletedThumbnails = 0;
 
-    await for (final entity in docsDir.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      if (entity is! File) continue;
-      final basename = p.basename(entity.path);
-      if (!basename.startsWith('thumbnail_') || !basename.endsWith('.png')) {
-        continue;
+    for (final root in roots) {
+      if (!await root.exists()) continue;
+      await for (final entity in root.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File) continue;
+        final basename = p.basename(entity.path);
+        if (!basename.startsWith('thumbnail_') || !basename.endsWith('.png')) {
+          continue;
+        }
+        bytesFreed += await _safeDeleteFile(entity);
+        deletedThumbnails += 1;
       }
-      bytesFreed += await _safeDeleteFile(entity);
-      deletedThumbnails += 1;
     }
 
     await _deleteEpochMarkersReferencing((name) {
@@ -249,21 +255,24 @@ class StorageManager {
   }
 
   static Future<StorageCleanupResult> clearEncryptedTempFiles() async {
-    final docsDir = await AppPaths.dataDirectory();
+    final roots = await AppPaths.allDataRoots();
     var bytesFreed = 0;
     var deletedTempFiles = 0;
 
-    await for (final entity in docsDir.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      if (entity is! File) continue;
-      final parts = p.split(p.relative(entity.path, from: docsDir.path));
-      if (parts.length >= 3 &&
-          parts[0].startsWith('camera_dir_') &&
-          parts[1] == 'encrypted') {
-        bytesFreed += await _safeDeleteFile(entity);
-        deletedTempFiles += 1;
+    for (final root in roots) {
+      if (!await root.exists()) continue;
+      await for (final entity in root.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File) continue;
+        final parts = p.split(p.relative(entity.path, from: root.path));
+        if (parts.length >= 3 &&
+            parts[0].startsWith('camera_dir_') &&
+            parts[1] == 'encrypted') {
+          bytesFreed += await _safeDeleteFile(entity);
+          deletedTempFiles += 1;
+        }
       }
     }
 
@@ -285,20 +294,13 @@ class StorageManager {
     final videoStore = AppStores.instance.videoStore;
     final detectionStore = AppStores.instance.detectionStore;
     final videos = await videoStore.getAllAsync();
-    final docsDir = await AppPaths.dataDirectory();
 
     final videoIdsToRemove = <int>[];
     final removedVideoNames = <String>{};
 
     for (final video in videos) {
-      final file = File(
-        p.join(
-          docsDir.path,
-          'camera_dir_${video.camera}',
-          'videos',
-          video.video,
-        ),
-      );
+      final cameraDir = await AppPaths.cameraDirectory(video.camera);
+      final file = File(p.join(cameraDir.path, 'videos', video.video));
       if (!await file.exists()) {
         videoIdsToRemove.add(video.id);
         removedVideoNames.add(video.video);
@@ -357,7 +359,6 @@ class StorageManager {
       await AppStores.init();
     }
 
-    final docsDir = await AppPaths.dataDirectory();
     final videoStore = AppStores.instance.videoStore;
     final detectionStore = AppStores.instance.detectionStore;
     final videos = await videoStore.getAllAsync();
@@ -374,14 +375,8 @@ class StorageManager {
       removedVideoIds.add(video.id);
       removedVideoNames.add(video.video);
 
-      final videoFile = File(
-        p.join(
-          docsDir.path,
-          'camera_dir_${video.camera}',
-          'videos',
-          video.video,
-        ),
-      );
+      final cameraDir = await AppPaths.cameraDirectory(video.camera);
+      final videoFile = File(p.join(cameraDir.path, 'videos', video.video));
       bytesFreed += await _safeDeleteFile(videoFile);
       deletedVideos += 1;
 
@@ -389,12 +384,7 @@ class StorageManager {
       if (timestamp != null) {
         final thumbnailName = 'thumbnail_$timestamp.png';
         final thumbnailFile = File(
-          p.join(
-            docsDir.path,
-            'camera_dir_${video.camera}',
-            'videos',
-            thumbnailName,
-          ),
+          p.join(cameraDir.path, 'videos', thumbnailName),
         );
         final thumbBytes = await _safeDeleteFile(thumbnailFile);
         if (thumbBytes > 0) {
@@ -441,23 +431,26 @@ class StorageManager {
   static Future<void> _deleteEpochMarkersReferencing(
     bool Function(String markerPayload) shouldDelete,
   ) async {
-    final docsDir = await AppPaths.dataDirectory();
-    await for (final entity in docsDir.list(
-      recursive: true,
-      followLinks: false,
-    )) {
-      if (entity is! File) continue;
-      final basename = p.basename(entity.path);
-      if (!basename.startsWith('.epoch_') || !basename.endsWith('.done')) {
-        continue;
-      }
-      try {
-        final content = (await entity.readAsString()).trim();
-        if (content.isNotEmpty && shouldDelete(content)) {
-          await entity.delete();
+    final roots = await AppPaths.allDataRoots();
+    for (final root in roots) {
+      if (!await root.exists()) continue;
+      await for (final entity in root.list(
+        recursive: true,
+        followLinks: false,
+      )) {
+        if (entity is! File) continue;
+        final basename = p.basename(entity.path);
+        if (!basename.startsWith('.epoch_') || !basename.endsWith('.done')) {
+          continue;
         }
-      } catch (e) {
-        Log.w('Failed to inspect epoch marker ${entity.path}: $e');
+        try {
+          final content = (await entity.readAsString()).trim();
+          if (content.isNotEmpty && shouldDelete(content)) {
+            await entity.delete();
+          }
+        } catch (e) {
+          Log.w('Failed to inspect epoch marker ${entity.path}: $e');
+        }
       }
     }
   }

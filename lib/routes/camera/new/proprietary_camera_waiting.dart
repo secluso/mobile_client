@@ -35,7 +35,6 @@ import 'package:secluso_flutter/utilities/rust_util.dart';
 import 'package:secluso_flutter/utilities/result.dart';
 import 'package:secluso_flutter/notifications/notification_permissions.dart';
 import 'proprietary_camera_option.dart';
-import 'package:path/path.dart' as p;
 
 class ProprietaryCameraWaitingDialog extends StatefulWidget {
   final String cameraName;
@@ -504,8 +503,7 @@ class _ProprietaryCameraWaitingDialogState
     HttpClientService.instance.clearGroupNameCache(cameraName);
     prefs.remove(PrefKeys.lastCameraAdd);
 
-    final docsDir = await AppPaths.dataDirectory();
-    final camDir = Directory(p.join(docsDir.path, 'camera_dir_$cameraName'));
+    final camDir = await AppPaths.cameraDirectory(cameraName);
     if (await camDir.exists()) {
       try {
         await camDir.delete(recursive: true);

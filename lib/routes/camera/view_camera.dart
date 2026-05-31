@@ -227,8 +227,8 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
     await prefs.reload();
     final cameraName = widget.cameraName;
     final cameraStatus =
-      prefs.getInt(PrefKeys.cameraStatusPrefix + cameraName) ??
-      CameraStatus.online;
+        prefs.getInt(PrefKeys.cameraStatusPrefix + cameraName) ??
+        CameraStatus.online;
 
     if (mounted) {
       setState(() => _cameraStatus = cameraStatus);
@@ -357,10 +357,8 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
     _dataGeneration++;
     _isLoading = false;
 
-    final dir = await AppPaths.dataDirectory();
-    final videoDir = Directory(
-      '${dir.path}/camera_dir_${widget.cameraName}/videos',
-    );
+    final cameraDir = await AppPaths.cameraDirectory(widget.cameraName);
+    final videoDir = Directory('${cameraDir.path}/videos');
     final nowMs = DateTime.now().millisecondsSinceEpoch;
     const recentThresholdMs = 15000;
 
@@ -542,10 +540,9 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
   }
 
   void _deleteOne(Video v, int index) async {
-    final dir = await AppPaths.dataDirectory();
-
     if (v.received) {
-      final videoPath = '${dir.path}/camera_dir_${v.camera}/videos/${v.video}';
+      final cameraDir = await AppPaths.cameraDirectory(v.camera);
+      final videoPath = '${cameraDir.path}/videos/${v.video}';
       final file = File(videoPath);
       if (await file.exists()) {
         try {
@@ -557,8 +554,7 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
 
       final ts = _timestampFromVideo(v.video);
       if (ts != null) {
-        final thumbPath =
-            '${dir.path}/camera_dir_${v.camera}/videos/thumbnail_$ts.png';
+        final thumbPath = '${cameraDir.path}/videos/thumbnail_$ts.png';
         final thumb = File(thumbPath);
         if (await thumb.exists()) {
           try {
@@ -1138,7 +1134,10 @@ class _CameraViewPageState extends State<CameraViewPage> with RouteAware {
                     width: metrics.statusDotSize,
                     height: metrics.statusDotSize,
                     decoration: BoxDecoration(
-                      color: isOnline ? const Color(0xFF10B981) : const Color(0xFFEF4444),
+                      color:
+                          isOnline
+                              ? const Color(0xFF10B981)
+                              : const Color(0xFFEF4444),
                       shape: BoxShape.circle,
                     ),
                   ),

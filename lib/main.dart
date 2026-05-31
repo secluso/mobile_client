@@ -10,6 +10,7 @@ import 'package:secluso_flutter/utilities/rust_api.dart';
 import 'package:secluso_flutter/utilities/firebase_init.dart';
 import 'package:flutter/services.dart';
 import 'package:secluso_flutter/notifications/heartbeat_task.dart';
+import 'package:secluso_flutter/notifications/nse_bridge.dart';
 import 'package:secluso_flutter/notifications/scheduler.dart';
 import 'package:secluso_flutter/notifications/android_push_transport.dart';
 import 'package:secluso_flutter/src/rust/guard.dart';
@@ -867,6 +868,9 @@ Future<void> _invalidateServerCredentials(SharedPreferences prefs) async {
   await prefs.remove(PrefKeys.serverUsername);
   await prefs.remove(PrefKeys.serverPassword);
   await prefs.remove(PrefKeys.fcmConfigJson);
+  // Keep the App Group credentials file in lockstep
+  // Tries to make sure iOS NSE doesn't try to call the hub with stale auth
+  unawaited(NseBridge.clearCredentials());
 }
 
 Future<void> _clearStoredRelayConnection(SharedPreferences prefs) async {
