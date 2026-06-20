@@ -29,5 +29,6 @@ jobs:
           set -Eeuo pipefail
 
           sudo env SECLUSO_REPRO_CLEAN=1 SECLUSO_REPRO_USE_HOST_CACHES=0 SECLUSO_REPRO_GRADLE_JVMARGS='-Xmx2G -XX:MaxMetaspaceSize=512m -XX:ReservedCodeCacheSize=256m -XX:+HeapDumpOnOutOfMemoryError' tool/repro/build_aab_with_docker.sh
-
-          sudo sha256sum /home/runner/work/mobile_client/mobile_client/build/reproducible/app-release-unsigned.aab
+      - name: Emit artifact hash
+        shell: bash
+        run: sudo sha256sum /home/runner/work/mobile_client/mobile_client/build/reproducible/app-release-unsigned.aab
