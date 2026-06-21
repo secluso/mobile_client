@@ -196,18 +196,8 @@ class _ProprietaryCameraWaitingDialogState
     return (serverReachable: results[0], relayReachable: results[1]);
   }
 
-  bool _shouldRetryNetworkRequest(Object? error) {
-    if (error == null) {
-      return false;
-    }
-
-    final message = error.toString();
-    return message.contains('SocketException') ||
-        message.contains('Network is unreachable') ||
-        message.contains('Failed host lookup') ||
-        message.contains('Connection refused') ||
-        message.contains('timed out');
-  }
+  bool _shouldRetryNetworkRequest(Object? error) =>
+      HttpClientService.isTransientNetworkError(error);
 
   Future<String?> _iosRelayPairingBlocker() async {
     if (!Platform.isIOS) {
@@ -271,18 +261,49 @@ class _ProprietaryCameraWaitingDialogState
   Future<Result<String>> _waitForPairingStatusWithRetries({
     required String pairingToken,
   }) async {
-    final deadline = DateTime.now().add(_pairingRetryTimeout);
+    final startedAt = DateTime.now();
+    final deadline = startedAt.add(_pairingRetryTimeout);
     Result<String>? lastResult;
     var attempt = 0;
 
+    Log.d(
+      '[pair] Starting pairing-status wait '
+      '(retryBudget=$_pairingRetryTimeout, deadline=$deadline)',
+    );
+
     while (true) {
       attempt += 1;
+      final attemptStart = DateTime.now();
       lastResult = await HttpClientService.instance.waitForPairingStatus(
         pairingToken: pairingToken,
       );
-      if (lastResult.isSuccess ||
-          !_shouldRetryNetworkRequest(lastResult.error) ||
-          DateTime.now().isAfter(deadline)) {
+      final attemptDuration = DateTime.now().difference(attemptStart);
+
+      if (lastResult.isSuccess) {
+        Log.d(
+          '[pair] Pairing-status request succeeded '
+          '(attempt=$attempt, attemptDuration=$attemptDuration, '
+          'totalElapsed=${DateTime.now().difference(startedAt)}, '
+          'status=${lastResult.value})',
+        );
+        return lastResult;
+      }
+
+      final retryable = _shouldRetryNetworkRequest(lastResult.error);
+      final pastDeadline = DateTime.now().isAfter(deadline);
+      if (!retryable || pastDeadline) {
+        // Capture why we stopped in the logs
+        final probes = await _probeRequiredNetworkTargets();
+        Log.w(
+          '[pair] Giving up on pairing-status request '
+          '(attempt=$attempt, attemptDuration=$attemptDuration, '
+          'totalElapsed=${DateTime.now().difference(startedAt)}, '
+          'reason=${!retryable ? 'non-retryable-error' : 'retry-budget-exhausted'}, '
+          'retryable=$retryable, pastDeadline=$pastDeadline, '
+          'serverReachable=${probes.serverReachable}, '
+          'relayReachable=${probes.relayReachable}, '
+          'error=${lastResult.error})',
+        );
         return lastResult;
       }
 
@@ -290,7 +311,9 @@ class _ProprietaryCameraWaitingDialogState
       final ssid = await _currentSsid();
       Log.w(
         'Pairing status request failed during network handoff; retrying '
-        '(attempt=$attempt, '
+        '(attempt=$attempt, attemptDuration=$attemptDuration, '
+        'totalElapsed=${DateTime.now().difference(startedAt)}, '
+        // Android ALWAYS reports <empty> here. iOS works fine.
         'ssid=${ssid.isEmpty ? '<empty>' : ssid}, '
         'serverReachable=${probes.serverReachable}, '
         'relayReachable=${probes.relayReachable}, '
