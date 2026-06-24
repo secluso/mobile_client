@@ -2,6 +2,8 @@
 
 import 'dart:typed_data';
 
+import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
+    as frb show Uint64List;
 import 'package:secluso_flutter/src/rust/api.dart' as raw;
 import 'package:secluso_flutter/utilities/logger.dart';
 
@@ -137,4 +139,39 @@ Future<String> processHeartbeatConfigResponse({
   cameraName: _cameraNameWithTrace(cameraName),
   configResponse: configResponse,
   expectedTimestamp: expectedTimestamp,
+);
+
+Future<String> getAddAppSecret() => raw.getAddAppSecret();
+
+Future<Uint8List> getKeyPackages({required String cameraName}) =>
+    raw.getKeyPackages(cameraName: _cameraNameWithTrace(cameraName));
+
+Future<Uint8List> generateAddAppRequestConfigCommand({
+  required String cameraName,
+  required List<int> newAppKeyPackagesVec,
+  required List<int> secret,
+}) => raw.generateAddAppRequestConfigCommand(
+  cameraName: _cameraNameWithTrace(cameraName),
+  newAppKeyPackagesVec: newAppKeyPackagesVec,
+  secret: secret,
+);
+
+Future<Uint8List> processAddAppConfigResponse({
+  required String cameraName,
+  required List<int> configResponse,
+  required List<int> secret,
+}) => raw.processAddAppConfigResponse(
+  cameraName: _cameraNameWithTrace(cameraName),
+  configResponse: configResponse,
+  secret: secret,
+);
+
+Future<frb.Uint64List> joinCameraGroups({
+  required String cameraName,
+  required List<int> secret,
+  required List<int> newAppDataVec,
+}) => raw.joinCameraGroups(
+  cameraName: _cameraNameWithTrace(cameraName),
+  secret: secret,
+  newAppDataVec: newAppDataVec,
 );

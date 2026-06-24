@@ -16,6 +16,12 @@ import 'package:secluso_flutter/ui/google_fonts.dart';
 import 'package:secluso_flutter/ui/secluso_qr_reader.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/secluso_theme.dart';
+import 'dart:typed_data';
+import 'package:secluso_flutter/notifications/epoch.dart';
+import 'package:secluso_flutter/utilities/http_client.dart';
+import 'package:secluso_flutter/utilities/rust_api.dart';
+import 'package:secluso_flutter/utilities/rust_util.dart';
+import 'package:secluso_flutter/routes/camera/new/add_app.dart';
 
 /// This dialog displays the camera preview and scans for a single QR code.
 /// After the first successful scan, it prompts the user for a camera name
@@ -287,7 +293,7 @@ class SeclusoQrScanScreen extends StatelessWidget {
   }
 }
 
-enum GenericCameraQrKind { proprietary, ip, review }
+enum GenericCameraQrKind { proprietary, ip, review, addApp }
 
 class GenericCameraQrPayload {
   const GenericCameraQrPayload._({
@@ -297,6 +303,7 @@ class GenericCameraQrPayload {
     this.initialCameraIp,
     this.reviewPayload,
     this.hotspotPassword,
+    this.addAppSecret,
   });
 
   final GenericCameraQrKind kind;
@@ -305,6 +312,7 @@ class GenericCameraQrPayload {
   final String? initialCameraIp;
   final ReviewCameraQrPayload? reviewPayload;
   final String? hotspotPassword;
+  final Uint8List? addAppSecret;
 
   factory GenericCameraQrPayload.proprietary(
     Uint8List rawQrBytes,
@@ -332,6 +340,13 @@ class GenericCameraQrPayload {
     return GenericCameraQrPayload._(
       kind: GenericCameraQrKind.review,
       reviewPayload: reviewPayload,
+    );
+  }
+
+  factory GenericCameraQrPayload.addApp(Uint8List addAppSecret) {
+    return GenericCameraQrPayload._(
+      kind: GenericCameraQrKind.addApp,
+      addAppSecret: addAppSecret,
     );
   }
 }
@@ -520,6 +535,11 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
                     ReviewCameraPairingFlowPage(reviewPayload: reviewPayload),
           ),
         );
+      case GenericCameraQrKind.addApp:
+        result = await AddAppFlow.show(
+          context,
+          addAppSecret: payload.addAppSecret!,
+        );
     }
 
     if (!mounted) return;
@@ -554,15 +574,17 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
           cameraSecret is String &&
           versionKey == Constants.cameraQrCodeVersion) {
         try {
-          final hotspotPassword = decoded['wp'];
-          if (hotspotPassword is String && hotspotPassword.isNotEmpty) {
-            final rawBytes = base64Decode(cameraSecret);
-            if (rawBytes.length == Constants.numCameraSecretBytes) {
+          final rawBytes = base64Decode(cameraSecret);
+          if (rawBytes.length == Constants.numCameraSecretBytes) {
+            final hotspotPassword = decoded['wp'];
+            if (hotspotPassword is String && hotspotPassword.isNotEmpty) {              
               return GenericCameraQrPayload.proprietary(
                 rawBytes,
                 hotspotPassword,
               );
             }
+
+            return GenericCameraQrPayload.addApp(rawBytes);
           }
         } catch (_) {}
 

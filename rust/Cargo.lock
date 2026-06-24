@@ -1922,9 +1922,9 @@ dependencies = [
 [[package]]
 name = "secluso-app-native"
 version = "1.0.2"
-source = "git+https://github.com/secluso/secluso?rev=7bcbb4e4785fddab7f309b9535b29b98d54136fc#7bcbb4e4785fddab7f309b9535b29b98d54136fc"
 dependencies = [
  "anyhow",
+ "base64-url",
  "bincode",
  "docopt",
  "flutter_rust_bridge",
@@ -1942,7 +1942,6 @@ dependencies = [
 [[package]]
 name = "secluso-client-lib"
 version = "1.0.2"
-source = "git+https://github.com/secluso/secluso?rev=7bcbb4e4785fddab7f309b9535b29b98d54136fc#7bcbb4e4785fddab7f309b9535b29b98d54136fc"
 dependencies = [
  "anyhow",
  "base64-url",
@@ -1963,7 +1962,6 @@ dependencies = [
 [[package]]
 name = "secluso-client-server-lib"
 version = "1.0.2"
-source = "git+https://github.com/secluso/secluso?rev=7bcbb4e4785fddab7f309b9535b29b98d54136fc#7bcbb4e4785fddab7f309b9535b29b98d54136fc"
 dependencies = [
  "anyhow",
  "rand 0.9.4",

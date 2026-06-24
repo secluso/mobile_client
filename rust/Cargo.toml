@@ -18,11 +18,12 @@ time="0.3.47"
 log = { version="0.4.29", features=["kv"] }
 fs2 = "0.4.3"
 tracing-log = "0.2.0"
+secluso-app-native = { path = "../../app_native" }
 
-[dependencies.secluso-app-native]
-git = "https://github.com/secluso/secluso"
-rev = "7bcbb4e4785fddab7f309b9535b29b98d54136fc"
-package = "secluso-app-native"
+#[dependencies.secluso-app-native]
+#git = "https://github.com/secluso/secluso"
+#rev = "7bcbb4e4785fddab7f309b9535b29b98d54136fc"
+#package = "secluso-app-native"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

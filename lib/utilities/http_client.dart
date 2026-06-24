@@ -127,6 +127,7 @@ class HttpClientService {
   static const int maxCommandFileSize = 100 * 1024; // 100 kibibytes
   static const int maxFcmConfigSize = 10 * 1024; // 10 kibibytes
   static const int maxServerVersionSize = 10 * 1024; // 10 kibibytes
+  static const int maxAddAppRequestSize = 100 * 1024; // 100 kibibytes
 
   HttpClientService._();
   static final HttpClientService instance = HttpClientService._();
@@ -694,6 +695,46 @@ class HttpClientService {
     }
 
     return response.bodyBytes;
+  });
+
+  Future<Result<Uint8List>> addAppCheck(String op) => _wrap(() async {
+    final creds = await _getValidatedCredentials();
+
+    final url = _buildUrl(creds.serverAddr, ['add_app_check', op]);
+    final headers = await _basicAuthHeaders(creds.username, creds.password);
+
+    final response = await _cappedGetResponse(
+      url,
+      headers: headers,
+      maxBytes: maxAddAppRequestSize,
+    );
+    await _handleServerVersionHeader(response);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Server error: ${response.statusCode} ${response.reasonPhrase}',
+      );
+    }
+
+    return response.bodyBytes;
+  });
+
+  Future<Result<void>> addAppRequest(String op, Uint8List data) =>
+      _wrap(() async {
+    final creds = await _getValidatedCredentials();
+
+    final url = _buildUrl(creds.serverAddr, ['add_app_request', op]);
+    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    headers[HttpHeaders.contentTypeHeader] = 'application/octet-stream';
+
+    final response = await http.post(url, headers: headers, body: data);
+    await _handleServerVersionHeader(response);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Server error: ${response.statusCode} ${response.reasonPhrase}',
+      );
+    }
   });
 
   /// Utility methods below
