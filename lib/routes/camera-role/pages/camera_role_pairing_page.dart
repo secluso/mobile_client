@@ -11,10 +11,13 @@ import 'package:secluso_flutter/ui/google_fonts.dart';
 
 /// Shows the camera QR + live Bluetooth advertising state, waiting for the primary app to connect.
 class CameraRolePairingPage extends StatelessWidget {
-  const CameraRolePairingPage({super.key, this.onConnected});
+  const CameraRolePairingPage({super.key, this.onConnected, this.onClose});
 
   /// In production this fires automatically when the MLS handshake completes.
   final VoidCallback? onConnected;
+
+  /// Invoked when the user dismisses pairing via the close button.
+  final VoidCallback? onClose;
 
   // A representative camera-QR payload for dummy testing until we get to swap this out
   static const _samplePayload =
@@ -41,7 +44,8 @@ class CameraRolePairingPage extends StatelessWidget {
                         color: Colors.white,
                         size: sz(22),
                       ),
-                      onPressed: () => Navigator.of(context).maybePop(),
+                      onPressed:
+                          onClose ?? () => Navigator.of(context).maybePop(),
                     ),
                   ),
                   SizedBox(height: sz(8)),

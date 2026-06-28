@@ -965,32 +965,56 @@ class StartupRoleGate extends StatefulWidget {
 }
 
 class _StartupRoleGateState extends State<StartupRoleGate> {
-  late final Future<Widget> _initialPage = _loadInitialPage();
+  Widget? _page;
 
-  Future<Widget> _loadInitialPage() async {
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialPage();
+  }
+
+  Future<void> _loadInitialPage() async {
     final prefs = await SharedPreferences.getInstance();
     final hasRelay = (prefs.getString(PrefKeys.serverAddr) ?? '').isNotEmpty;
     final role = prefs.getString(PrefKeys.deviceRole);
 
     if (hasRelay || role == _deviceRoleViewer || !cameraRoleSupported) {
-      return const AppShell();
+      _show(const AppShell());
+    } else if (role == _deviceRoleCamera) {
+      _show(_pairingPage());
+    } else {
+      _show(_roleSelectPage());
     }
-    if (role == _deviceRoleCamera) {
-      return const CameraRolePairingPage();
-    }
-    return RoleSelectPage(
-      onWatchCameras: _chooseViewerRole,
-      onBeCamera: _chooseCameraRole,
-    );
+  }
+
+  void _show(Widget page) {
+    if (!mounted) return;
+    setState(() => _page = page);
+  }
+
+  Widget _roleSelectPage() => RoleSelectPage(
+    onWatchCameras: _chooseViewerRole,
+    onBeCamera: _chooseCameraRole,
+  );
+
+  Widget _pairingPage() => CameraRolePairingPage(
+    onConnected: () => _show(_recordingPage()),
+    onClose: _returnToRoleSelect,
+  );
+
+  Widget _recordingPage() =>
+      CameraRoleRecordingPage(onUnpair: _returnToRoleSelect);
+
+  Future<void> _returnToRoleSelect() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(PrefKeys.deviceRole);
+    _show(_roleSelectPage());
   }
 
   Future<void> _chooseViewerRole() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(PrefKeys.deviceRole, _deviceRoleViewer);
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const AppShell(initialIndex: 2)),
-    );
+    _show(const AppShell(initialIndex: 2));
   }
 
   Future<void> _chooseCameraRole() async {
@@ -1004,20 +1028,12 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
     }
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(PrefKeys.deviceRole, _deviceRoleCamera);
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      MaterialPageRoute<void>(builder: (_) => const CameraRolePairingPage()),
-    );
+    _show(_pairingPage());
   }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<Widget>(
-      future: _initialPage,
-      builder: (context, snapshot) {
-        return snapshot.data ?? const SplashScreen();
-      },
-    );
+    return _page ?? const SplashScreen();
   }
 }
 

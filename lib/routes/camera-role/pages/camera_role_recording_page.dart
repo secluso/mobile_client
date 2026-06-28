@@ -7,7 +7,10 @@ import 'package:secluso_flutter/routes/camera-role/theme.dart';
 import 'package:secluso_flutter/routes/camera-role/widgets/shared_widgets.dart';
 
 class CameraRoleRecordingPage extends StatefulWidget {
-  const CameraRoleRecordingPage({super.key});
+  const CameraRoleRecordingPage({super.key, this.onUnpair});
+
+  /// Invoked once the user confirms stopping and unpairing.
+  final VoidCallback? onUnpair;
 
   @override
   State<CameraRoleRecordingPage> createState() =>
@@ -20,19 +23,45 @@ class _CameraRoleRecordingPageState extends State<CameraRoleRecordingPage> {
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
-          title: const Text('Are you sure?'),
+          backgroundColor: const Color(0xFF161616),
+          titleTextStyle: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+          contentTextStyle: const TextStyle(
+            color: cameraRoleWhite40,
+            fontSize: 14,
+            height: 1.4,
+          ),
+          title: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Expanded(child: Text('Stop and unpair?')),
+              IconButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                icon: const Icon(Icons.close_rounded),
+                color: cameraRoleWhite40,
+                iconSize: 20,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                tooltip: 'Cancel',
+              ),
+            ],
+          ),
           content: const Text(
-            'This will stop recording and unpair the camera role from this phone.',
+            'This will stop recording and unpair the camera role from this '
+            'phone.',
           ),
           actions: [
             FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
-            ),
-            Padding(padding: EdgeInsetsGeometry.all(5)),
-            FilledButton(
               onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Unpair the camera.'),
+              style: FilledButton.styleFrom(
+                backgroundColor: cameraRoleDanger,
+                foregroundColor: cameraRoleBg,
+              ),
+              child: const Text('Unpair'),
             ),
           ],
         );
@@ -42,7 +71,7 @@ class _CameraRoleRecordingPageState extends State<CameraRoleRecordingPage> {
     if (shouldStop != true || !mounted) {
       return;
     }
-    Navigator.of(context).popUntil((route) => route.isFirst);
+    widget.onUnpair?.call();
   }
 
   @override
