@@ -4,6 +4,181 @@ import 'package:flutter/material.dart';
 import 'package:secluso_flutter/ui/google_fonts.dart';
 import 'package:secluso_flutter/ui/secluso_shell_ui.dart';
 
+/// The very first screen on a fresh install: pick what this phone's job is.
+///
+/// Choosing "Watch my cameras" continues into what the app used to be, pick a relay, then add a camera...
+/// Choosing "Be a camera" enters the camera role flow (acts on its own as a camera)
+
+class RoleSelectPage extends StatelessWidget {
+  const RoleSelectPage({
+    super.key,
+    required this.onWatchCameras,
+    required this.onBeCamera,
+  });
+
+  final VoidCallback onWatchCameras;
+  final VoidCallback onBeCamera;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final metrics = _SystemShellUnpairedMetrics.forWidth(
+          constraints.maxWidth,
+        );
+        return Scaffold(
+          backgroundColor: const Color(0xFF050505),
+          body: SafeArea(
+            child: ListView(
+              physics: const BouncingScrollPhysics(),
+              padding: EdgeInsets.fromLTRB(
+                0,
+                metrics.topPadding,
+                0,
+                metrics.bottomPadding,
+              ),
+              children: [
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: metrics.pageInset),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Secluso',
+                        style: shellTitleStyle(
+                          context,
+                          fontSize: metrics.titleSize,
+                          designLetterSpacing: 0.55,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(height: metrics.subtitleTopGap),
+                      Text(
+                        "LET'S GET YOU SET UP",
+                        style: GoogleFonts.inter(
+                          color: Colors.white.withValues(alpha: 0.4),
+                          fontSize: metrics.subtitleSize,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: metrics.subtitleSize * 0.18,
+                          height: 16.5 / 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                SizedBox(height: metrics.headerToCardGap),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: metrics.railInset),
+                  child: _RoleSetupCard(
+                    metrics: metrics,
+                    onWatchCameras: onWatchCameras,
+                    onBeCamera: onBeCamera,
+                  ),
+                ),
+                SizedBox(height: metrics.cardGap),
+                Padding(
+                  padding: EdgeInsets.symmetric(horizontal: metrics.railInset),
+                  child: _SystemDarkSecurityCard(metrics: metrics),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _RoleSetupCard extends StatelessWidget {
+  const _RoleSetupCard({
+    required this.metrics,
+    required this.onWatchCameras,
+    required this.onBeCamera,
+  });
+
+  final _SystemShellUnpairedMetrics metrics;
+  final VoidCallback onWatchCameras;
+  final VoidCallback onBeCamera;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      foregroundPainter: ShellTopAccentBorderPainter(
+        color: const Color(0xFF8BB3EE),
+        strokeWidth: metrics.setupAccentStrokeWidth,
+        radius: metrics.cardRadius,
+        revealHeight: metrics.cardRadius * 0.92,
+      ),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.03),
+          borderRadius: BorderRadius.circular(metrics.cardRadius),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+        ),
+        padding: EdgeInsets.all(metrics.cardInset),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              "What's this phone's job?",
+              style: GoogleFonts.inter(
+                color: Colors.white,
+                fontSize: metrics.setupTitleSize,
+                fontWeight: FontWeight.w600,
+                height: 24 / 16,
+              ),
+            ),
+            SizedBox(height: metrics.setupTitleGap),
+            Text(
+              'Pick a role for this device.\nYou can change it later.',
+              style: GoogleFonts.inter(
+                color: const Color(0xFF6D7077),
+                fontSize: metrics.setupBodySize,
+                fontWeight: FontWeight.w400,
+                height: 17.88 / 11,
+              ),
+            ),
+            SizedBox(height: metrics.setupBodyGap),
+            _SystemDarkSetupOption(
+              metrics: metrics,
+              title: 'Watch my cameras',
+              subtitle: 'See live and saved video.\nConnects to your relay.',
+              icon: const SizedBox(
+                width: 16,
+                height: 16,
+                child: CustomPaint(
+                  painter: _RoleViewerIconPainter(Color(0xFF8BB3EE)),
+                ),
+              ),
+              iconBackground: const Color(0x338BB3EE),
+              backgroundColor: const Color(0x1A8BB3EE),
+              borderColor: const Color(0x338BB3EE),
+              onTap: onWatchCameras,
+            ),
+            SizedBox(height: metrics.optionGap),
+            _SystemDarkSetupOption(
+              metrics: metrics,
+              title: 'Be a camera',
+              subtitle: 'Leave a spare phone recording.\nPairs over Bluetooth.',
+              icon: const SizedBox(
+                width: 16,
+                height: 16,
+                child: CustomPaint(
+                  painter: _RoleCameraIconPainter(Color(0xFF8BB3EE)),
+                ),
+              ),
+              iconBackground: const Color(0x1A8BB3EE),
+              backgroundColor: Colors.white.withValues(alpha: 0.04),
+              borderColor: Colors.white.withValues(alpha: 0.08),
+              onTap: onBeCamera,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class SystemShellUnpairedPage extends StatelessWidget {
   const SystemShellUnpairedPage({
     super.key,
@@ -671,6 +846,110 @@ class _SystemSelfHostedIconPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _SystemSelfHostedIconPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+/// Role icon: a monitor with a play glyph ("watch my cameras").
+class _RoleViewerIconPainter extends CustomPainter {
+  const _RoleViewerIconPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    double x(double u) => size.width * (u / 16);
+    double y(double u) => size.height * (u / 16);
+    final stroke =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * (1.33333 / 16)
+          ..color = color
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..isAntiAlias = true;
+    // Screen frame.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(x(2), y(2.6667), x(12), y(8)),
+        Radius.circular(x(1.3333)),
+      ),
+      stroke,
+    );
+    // Stand.
+    canvas.drawLine(Offset(x(8), y(10.6667)), Offset(x(8), y(12.8)), stroke);
+    canvas.drawLine(
+      Offset(x(5.3333), y(12.8)),
+      Offset(x(10.6667), y(12.8)),
+      stroke,
+    );
+    // Play glyph.
+    final fill =
+        Paint()
+          ..style = PaintingStyle.fill
+          ..color = color
+          ..isAntiAlias = true;
+    final play =
+        Path()
+          ..moveTo(x(6.9), y(4.9))
+          ..lineTo(x(6.9), y(8.4))
+          ..lineTo(x(9.9), y(6.65))
+          ..close();
+    canvas.drawPath(play, fill);
+  }
+
+  @override
+  bool shouldRepaint(covariant _RoleViewerIconPainter oldDelegate) =>
+      oldDelegate.color != color;
+}
+
+/// Role icon: a camcorder with a record dot ("be a camera").
+class _RoleCameraIconPainter extends CustomPainter {
+  const _RoleCameraIconPainter(this.color);
+
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    double x(double u) => size.width * (u / 16);
+    double y(double u) => size.height * (u / 16);
+    final stroke =
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = size.width * (1.33333 / 16)
+          ..color = color
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round
+          ..isAntiAlias = true;
+    // Body.
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(x(2), y(4.6667), x(8), y(6.6667)),
+        Radius.circular(x(1.3333)),
+      ),
+      stroke,
+    );
+    // Lens barrel.
+    final lens =
+        Path()
+          ..moveTo(x(10), y(7))
+          ..lineTo(x(13.6667), y(5))
+          ..lineTo(x(13.6667), y(11))
+          ..lineTo(x(10), y(9))
+          ..close();
+    canvas.drawPath(lens, stroke);
+    // Record dot.
+    canvas.drawCircle(
+      Offset(x(5), y(8)),
+      x(1),
+      Paint()
+        ..style = PaintingStyle.fill
+        ..color = color
+        ..isAntiAlias = true,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _RoleCameraIconPainter oldDelegate) =>
       oldDelegate.color != color;
 }
 
