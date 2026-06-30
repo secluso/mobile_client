@@ -20,6 +20,8 @@ import 'package:secluso_flutter/routes/camera/view_camera.dart';
 import 'package:secluso_flutter/routes/camera/view_livestream.dart';
 import 'package:secluso_flutter/routes/camera/view_video.dart';
 import 'package:secluso_flutter/routes/server_page.dart';
+import 'package:secluso_flutter/routes/system_shell_page.dart';
+import 'package:secluso_flutter/routes/camera-role/camera_role_pages.dart';
 import 'package:secluso_flutter/routes/settings_page.dart' as app_settings;
 import 'package:secluso_flutter/ui/secluso_preview_assets.dart';
 import 'package:secluso_flutter/routes/theme_provider.dart';
@@ -483,6 +485,23 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
         previewServerAddr: reviewSession.relayAddress,
         previewCameraNames: reviewSession.cameraNames,
       );
+    case 'role_select':
+      return Builder(
+        builder:
+            (context) => RoleSelectPage(
+              onWatchCameras: () {},
+              onBeCamera:
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const CameraRolePairingPage(),
+                    ),
+                  ),
+            ),
+      );
+    case 'camera_role_pairing':
+      return const CameraRolePairingPage();
+    case 'camera_role_recording':
+      return const CameraRoleRecordingPage();
     case 'system_unpaired':
       return const AppShell(
         initialIndex: 2,

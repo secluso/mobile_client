@@ -42,6 +42,8 @@ import 'package:secluso_flutter/constants.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/font_licenses.dart';
 import 'package:secluso_flutter/ui/secluso_theme.dart';
+import 'package:secluso_flutter/routes/camera-role/camera_role_pages.dart';
+import 'package:secluso_flutter/routes/system_shell_page.dart';
 import 'dart:isolate';
 
 final ReceivePort _mainReceivePort = ReceivePort();
@@ -952,6 +954,88 @@ Future<void> _checkForUpdates() async {
 
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
+const String _deviceRoleViewer = 'viewer';
+const String _deviceRoleCamera = 'camera';
+
+class StartupRoleGate extends StatefulWidget {
+  const StartupRoleGate({super.key});
+
+  @override
+  State<StartupRoleGate> createState() => _StartupRoleGateState();
+}
+
+class _StartupRoleGateState extends State<StartupRoleGate> {
+  Widget? _page;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadInitialPage();
+  }
+
+  Future<void> _loadInitialPage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hasRelay = (prefs.getString(PrefKeys.serverAddr) ?? '').isNotEmpty;
+    final role = prefs.getString(PrefKeys.deviceRole);
+
+    if (hasRelay || role == _deviceRoleViewer || !cameraRoleSupported) {
+      _show(const AppShell());
+    } else if (role == _deviceRoleCamera) {
+      _show(_pairingPage());
+    } else {
+      _show(_roleSelectPage());
+    }
+  }
+
+  void _show(Widget page) {
+    if (!mounted) return;
+    setState(() => _page = page);
+  }
+
+  Widget _roleSelectPage() => RoleSelectPage(
+    onWatchCameras: _chooseViewerRole,
+    onBeCamera: _chooseCameraRole,
+  );
+
+  Widget _pairingPage() => CameraRolePairingPage(
+    onConnected: () => _show(_recordingPage()),
+    onClose: _returnToRoleSelect,
+  );
+
+  Widget _recordingPage() =>
+      CameraRoleRecordingPage(onUnpair: _returnToRoleSelect);
+
+  Future<void> _returnToRoleSelect() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(PrefKeys.deviceRole);
+    _show(_roleSelectPage());
+  }
+
+  Future<void> _chooseViewerRole() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(PrefKeys.deviceRole, _deviceRoleViewer);
+    _show(const AppShell(initialIndex: 2));
+  }
+
+  Future<void> _chooseCameraRole() async {
+    if (!cameraRoleSupported) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Camera role is only supported on Android.'),
+        ),
+      );
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(PrefKeys.deviceRole, _deviceRoleCamera);
+    _show(_pairingPage());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _page ?? const SplashScreen();
+  }
+}
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key, required this.isReady, this.initError});
@@ -1042,8 +1126,8 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
                               ) ??
                               (_launchDesignLab
                                   ? const DesignLabPage()
-                                  : const AppShell()))
-                      : const AppShell(),
+                                  : const StartupRoleGate()))
+                      : const StartupRoleGate(),
             )
             : SplashScreen(errorMessage: widget.initError);
 

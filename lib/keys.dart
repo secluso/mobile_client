@@ -21,6 +21,7 @@ class PrefKeys {
   static const serverAddr = "server_addr";
   static const serverUsername = "server_username";
   static const serverPassword = "server_password";
+  static const deviceRole = "device_role";
   static const relayConnectionKind = "relay_connection_kind";
   static const recordingMotionVideosPrefix = "recording_motion_videos_";
   static const lastRecordingTimestampPrefix = "last_recording_timestamp_";
