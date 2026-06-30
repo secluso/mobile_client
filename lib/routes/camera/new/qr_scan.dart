@@ -22,6 +22,8 @@ import 'package:secluso_flutter/utilities/http_client.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
 import 'package:secluso_flutter/utilities/rust_util.dart';
 import 'package:secluso_flutter/routes/camera/new/add_app.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:secluso_flutter/keys.dart';
 
 /// This dialog displays the camera preview and scans for a single QR code.
 /// After the first successful scan, it prompts the user for a camera name
@@ -304,6 +306,8 @@ class GenericCameraQrPayload {
     this.reviewPayload,
     this.hotspotPassword,
     this.addAppSecret,
+    this.addAppServerAddr,
+    this.addAppServerUsername,
   });
 
   final GenericCameraQrKind kind;
@@ -313,6 +317,8 @@ class GenericCameraQrPayload {
   final ReviewCameraQrPayload? reviewPayload;
   final String? hotspotPassword;
   final Uint8List? addAppSecret;
+  final String? addAppServerAddr;
+  final String? addAppServerUsername;
 
   factory GenericCameraQrPayload.proprietary(
     Uint8List rawQrBytes,
@@ -343,10 +349,16 @@ class GenericCameraQrPayload {
     );
   }
 
-  factory GenericCameraQrPayload.addApp(Uint8List addAppSecret) {
+  factory GenericCameraQrPayload.addApp(
+    Uint8List addAppSecret, {
+    required String serverAddr,
+    required String serverUsername,
+  }) {
     return GenericCameraQrPayload._(
       kind: GenericCameraQrKind.addApp,
       addAppSecret: addAppSecret,
+      addAppServerAddr: serverAddr,
+      addAppServerUsername: serverUsername,
     );
   }
 }
@@ -466,6 +478,20 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
     );
   }
 
+  Future<String?> _validateAddAppRelay(GenericCameraQrPayload payload) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final localServerAddr = prefs.getString(PrefKeys.serverAddr)?.trim();
+    final localServerUsername = prefs.getString(PrefKeys.serverUsername)?.trim();
+
+    if (localServerAddr != payload.addAppServerAddr ||
+        localServerUsername != payload.addAppServerUsername) {
+      return 'Both phones need to be connected to the same relay with the same account in order to add the phone.';
+    }
+
+    return null;
+  }
+
   Future<void> _handleDetectedBarcode(Code barcode) async {
     if (_handlingScan || !barcode.isValid) return;
 
@@ -536,6 +562,12 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
           ),
         );
       case GenericCameraQrKind.addApp:
+        final relayError = await _validateAddAppRelay(payload);
+        if (relayError != null) {
+          _showNonSeclusoQrIndicator(relayError);
+          break;
+        }
+
         result = await AddAppFlow.show(
           context,
           addAppSecret: payload.addAppSecret!,
@@ -584,7 +616,21 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
               );
             }
 
-            return GenericCameraQrPayload.addApp(rawBytes);
+            final serverAddr = decoded['sa'];
+            final serverUsername = decoded['su'];
+
+            if (serverAddr is! String ||
+                serverAddr.trim().isEmpty ||
+                serverUsername is! String ||
+                serverUsername.trim().isEmpty) {
+              return null;
+            }
+
+            return GenericCameraQrPayload.addApp(
+              rawBytes,
+              serverAddr: serverAddr.trim(),
+              serverUsername: serverUsername.trim(),
+            );
           }
         } catch (_) {}
 

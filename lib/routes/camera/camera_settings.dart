@@ -161,12 +161,37 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Widget _buildAddAppQrCode(String qrData) {
+  Future<String> _buildAugmentedQrData(String qrData) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final serverAddr = prefs.getString(PrefKeys.serverAddr)?.trim();
+    final serverUsername = prefs.getString(PrefKeys.serverUsername)?.trim();
+
+    if (serverAddr == null ||
+        serverAddr.isEmpty ||
+        serverUsername == null ||
+        serverUsername.isEmpty) {
+      throw Exception('Missing relay settings');
+    }
+
+    final decoded = jsonDecode(qrData);
+    if (decoded is! Map) {
+      throw const FormatException('Invalid add-phone QR data');
+    }
+
+    final payload = Map<String, dynamic>.from(decoded);
+    payload['sa'] = serverAddr;
+    payload['su'] = serverUsername;
+
+    return jsonEncode(payload);
+  }
+
+  Widget _buildAddAppQrCode(String augmentedQrData) {
     const qrPixels = 220;
     const qrSize = 220.0;
 
     final result = zx.encodeBarcode(
-      contents: qrData,
+      contents: augmentedQrData,
       params: EncodeParams(
         format: Format.qrCode,
         width: qrPixels,
@@ -217,6 +242,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     final qrData = await getAddAppSecret();
+    final augmentedQrData = await _buildAugmentedQrData(qrData);
 
     late final Uint8List addAppSecret;
     try {
@@ -273,7 +299,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                _buildAddAppQrCode(qrData),
+                _buildAddAppQrCode(augmentedQrData),
                 const SizedBox(height: 16),
                 const LinearProgressIndicator(),
                 const SizedBox(height: 12),
