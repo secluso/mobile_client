@@ -8,7 +8,7 @@ import 'package:secluso_flutter/ui/google_fonts.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/secluso_shell_ui.dart';
 import 'camera_ui_bridge.dart';
-import 'package:qr_flutter/qr_flutter.dart';
+import 'package:flutter_zxing/flutter_zxing.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
 import 'package:secluso_flutter/notifications/epoch.dart';
@@ -161,6 +161,42 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
+  Widget _buildAddAppQrCode(String qrData) {
+    const qrPixels = 220;
+    const qrSize = 220.0;
+
+    final result = zx.encodeBarcode(
+      contents: qrData,
+      params: EncodeParams(
+        format: Format.qrCode,
+        width: qrPixels,
+        height: qrPixels,
+        margin: 10,
+        eccLevel: EccLevel.low,
+      ),
+    );
+
+    if (!result.isValid || result.data == null) {
+      return const SizedBox(
+        width: qrSize,
+        height: qrSize,
+        child: Center(child: Text('Could not generate QR code')),
+      );
+    }
+
+    return Container(
+      width: qrSize,
+      height: qrSize,
+      color: Colors.white,
+      child: Image.memory(
+        pngFromBytes(result.data!, qrPixels, qrPixels),
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.none,
+        gaplessPlayback: true,
+      ),
+    );
+  }
+
   Future<void> _addApp() async {
     final prefs = await SharedPreferences.getInstance();
     final addedViaAddApp =
@@ -237,13 +273,7 @@ class _SettingsPageState extends State<SettingsPage> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                QrImageView(
-                  data: qrData,
-                  version: QrVersions.auto,
-                  size: 220,
-                  backgroundColor: Colors.white,
-                  foregroundColor: Colors.black,
-                ),
+                _buildAddAppQrCode(qrData),
                 const SizedBox(height: 16),
                 const LinearProgressIndicator(),
                 const SizedBox(height: 12),
