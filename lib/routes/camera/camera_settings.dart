@@ -8,6 +8,13 @@ import 'package:secluso_flutter/ui/google_fonts.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/secluso_shell_ui.dart';
 import 'camera_ui_bridge.dart';
+import 'package:flutter_zxing/flutter_zxing.dart';
+import 'package:secluso_flutter/utilities/rust_api.dart';
+import 'package:secluso_flutter/utilities/http_client.dart';
+import 'package:secluso_flutter/notifications/epoch.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+import 'package:secluso_flutter/constants.dart';
 
 enum CameraSettingsAction { removeCamera }
 
@@ -151,6 +158,279 @@ class _SettingsPageState extends State<SettingsPage> {
       CameraUiBridge.refreshCameraListCallback?.call();
       if (!mounted) return;
       Navigator.of(context).pop(CameraSettingsAction.removeCamera);
+    }
+  }
+
+  Future<String> _buildAugmentedQrData(String qrData) async {
+    final prefs = await SharedPreferences.getInstance();
+
+    final serverAddr = prefs.getString(PrefKeys.serverAddr)?.trim();
+    final serverUsername = prefs.getString(PrefKeys.serverUsername)?.trim();
+
+    if (serverAddr == null ||
+        serverAddr.isEmpty ||
+        serverUsername == null ||
+        serverUsername.isEmpty) {
+      throw Exception('Missing relay settings');
+    }
+
+    final decoded = jsonDecode(qrData);
+    if (decoded is! Map) {
+      throw const FormatException('Invalid add-phone QR data');
+    }
+
+    final payload = Map<String, dynamic>.from(decoded);
+    payload['sa'] = serverAddr;
+    payload['su'] = serverUsername;
+
+    return jsonEncode(payload);
+  }
+
+  Widget _buildAddAppQrCode(String augmentedQrData) {
+    const qrPixels = 220;
+    const qrSize = 220.0;
+
+    final result = zx.encodeBarcode(
+      contents: augmentedQrData,
+      params: EncodeParams(
+        format: Format.qrCode,
+        width: qrPixels,
+        height: qrPixels,
+        margin: 10,
+        eccLevel: EccLevel.low,
+      ),
+    );
+
+    if (!result.isValid || result.data == null) {
+      return const SizedBox(
+        width: qrSize,
+        height: qrSize,
+        child: Center(child: Text('Could not generate QR code')),
+      );
+    }
+
+    return Container(
+      width: qrSize,
+      height: qrSize,
+      color: Colors.white,
+      child: Image.memory(
+        pngFromBytes(result.data!, qrPixels, qrPixels),
+        fit: BoxFit.contain,
+        filterQuality: FilterQuality.none,
+        gaplessPlayback: true,
+      ),
+    );
+  }
+
+  Future<void> _addApp() async {
+    final prefs = await SharedPreferences.getInstance();
+    final addedViaAddApp =
+        prefs.getBool(PrefKeys.cameraAddedViaAddAppPrefix + widget.cameraName) ??
+        false;
+
+    if (addedViaAddApp) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Adding another phone is only available on the primary phone.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    final qrData = await getAddAppSecret();
+    final augmentedQrData = await _buildAugmentedQrData(qrData);
+
+    late final Uint8List addAppSecret;
+    try {
+      addAppSecret = decodeAddAppSecret(qrData);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not decode add-phone secret: $e')),
+        );
+      }
+      return;
+    }
+
+    var started = false;
+
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        if (!started) {
+          started = true;
+
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            String? error;
+
+            try {
+              await _handleAddApp(addAppSecret);
+            } catch (e) {
+              error = e.toString();
+            }
+
+            if (dialogCtx.mounted) {
+              Navigator.of(dialogCtx).pop();
+            }
+
+            if (!mounted) return;
+
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  error == null
+                      ? 'Phone added successfully.'
+                      : 'Could not add phone: $error',
+                ),
+              ),
+            );
+          });
+        }
+
+        return AlertDialog(
+          title: const Text('Add another phone'),
+          content: SizedBox(
+            width: 240,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildAddAppQrCode(augmentedQrData),
+                const SizedBox(height: 16),
+                const LinearProgressIndicator(),
+                const SizedBox(height: 12),
+                const Text(
+                  'Waiting for the other phone...',
+                  textAlign: TextAlign.center,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(),
+              child: const Text('Close'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Uint8List decodeAddAppSecret(String qrData) {
+    dynamic decoded;
+    try {
+      decoded = jsonDecode(qrData);
+    } catch (_) {
+      decoded = null;
+    }
+
+    if (decoded is Map) {
+      final versionKey = decoded['v'];
+      final cameraSecret = decoded['cs'];
+      if (versionKey is String &&
+          cameraSecret is String &&
+          versionKey == Constants.cameraQrCodeVersion) {
+        try {
+          final rawBytes = base64Decode(cameraSecret);
+          if (rawBytes.length == Constants.numCameraSecretBytes) {
+            final hotspotPassword = decoded['wp'];
+            if (!(hotspotPassword is String && hotspotPassword.isNotEmpty)) {
+              return rawBytes;
+            }
+          }
+        } catch (_) {}
+      }
+    }
+
+    throw FormatException('Could not decide add-phone secret');
+  }
+
+  Future<void> _handleAddApp(Uint8List addAppSecret) async {
+    final httpClient = HttpClientService.instance;
+
+    final newAppKeyPackagesResult =
+        await httpClient.addAppCheck("add_app_start");
+
+    if (newAppKeyPackagesResult.isFailure) {
+      throw Exception(
+        'failed to wait for new phone: ${newAppKeyPackagesResult.error}',
+      );
+    }
+
+    final newAppKeyPackages = newAppKeyPackagesResult.value;
+    if (newAppKeyPackages == null) {
+      throw Exception('failed to wait for new phone: missing key packages');
+    }
+
+    final configMsgEnc = await generateAddAppRequestConfigCommand(
+      cameraName: widget.cameraName,
+      newAppKeyPackagesVec: newAppKeyPackages,
+      secret: addAppSecret,
+    );
+
+    if (configMsgEnc.isEmpty) {
+      throw Exception('failed to generate the add-phone config command');
+    }
+
+    final configCommandResult = await httpClient.configCommand(
+      cameraName: widget.cameraName,
+      command: configMsgEnc,
+    );
+
+    if (configCommandResult.isFailure) {
+      throw Exception(
+        'failed to send config command: ${configCommandResult.error}',
+      );
+    }
+
+    Uint8List? configResponse;
+    for (var attempt = 0; attempt < 30; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+
+      final response = await httpClient.fetchConfigResponse(
+        cameraName: widget.cameraName,
+      );
+
+      if (response.isSuccess) {
+        configResponse = response.value;
+        break;
+      }
+    }
+
+    if (configResponse == null) {
+      throw Exception(
+        "couldn't fetch the add-phone config response. Camera might be offline.",
+      );
+    }
+
+    final newAppDataVec = await processAddAppConfigResponse(
+      cameraName: widget.cameraName,
+      configResponse: configResponse,
+      secret: addAppSecret,
+    );
+
+    if (newAppDataVec.isEmpty) {
+      throw Exception('failed to process the camera add-phone response');
+    }
+
+    final videoEpoch = await readEpoch(widget.cameraName, 'video');
+    await writeEpoch(widget.cameraName, 'video', videoEpoch + 1);
+
+    final thumbnailEpoch = await readEpoch(widget.cameraName, 'thumbnail');
+    await writeEpoch(widget.cameraName, 'thumbnail', thumbnailEpoch + 1);
+
+    final addAppRequestResult =
+        await httpClient.addAppRequest("add_app_finish", newAppDataVec);
+
+    if (addAppRequestResult.isFailure) {
+      throw Exception(
+        'failed to send add-phone response: ${addAppRequestResult.error}',
+      );
     }
   }
 
@@ -460,6 +740,14 @@ class _SettingsPageState extends State<SettingsPage> {
                       horizontalPadding: metrics.rowHorizontalPadding,
                       titleStyle: rowTitleStyle,
                     ),
+                  ShellSettingsRow(
+                    title: 'Add another phone',
+                    onTap: _addApp,
+                    trailing: const SizedBox.shrink(),
+                    height: metrics.advancedBottomRowHeight,
+                    horizontalPadding: metrics.rowHorizontalPadding,
+                    titleStyle: rowTitleStyle,
+                  ),
                   ShellSettingsRow(
                     title: 'Remove Camera',
                     onTap: _confirmRemoveCamera,

@@ -1922,7 +1922,7 @@ dependencies = [
 [[package]]
 name = "secluso-app-native"
 version = "1.0.2"
-source = "git+https://github.com/secluso/secluso?rev=7bcbb4e4785fddab7f309b9535b29b98d54136fc#7bcbb4e4785fddab7f309b9535b29b98d54136fc"
+source = "git+https://github.com/secluso/secluso?rev=a38c1e01ba81c5f3185f3219a3c35713b29f43cd#a38c1e01ba81c5f3185f3219a3c35713b29f43cd"
 dependencies = [
  "anyhow",
  "bincode",
@@ -1942,7 +1942,7 @@ dependencies = [
 [[package]]
 name = "secluso-client-lib"
 version = "1.0.2"
-source = "git+https://github.com/secluso/secluso?rev=7bcbb4e4785fddab7f309b9535b29b98d54136fc#7bcbb4e4785fddab7f309b9535b29b98d54136fc"
+source = "git+https://github.com/secluso/secluso?rev=a38c1e01ba81c5f3185f3219a3c35713b29f43cd#a38c1e01ba81c5f3185f3219a3c35713b29f43cd"
 dependencies = [
  "anyhow",
  "base64-url",
@@ -1963,7 +1963,7 @@ dependencies = [
 [[package]]
 name = "secluso-client-server-lib"
 version = "1.0.2"
-source = "git+https://github.com/secluso/secluso?rev=7bcbb4e4785fddab7f309b9535b29b98d54136fc#7bcbb4e4785fddab7f309b9535b29b98d54136fc"
+source = "git+https://github.com/secluso/secluso?rev=a38c1e01ba81c5f3185f3219a3c35713b29f43cd#a38c1e01ba81c5f3185f3219a3c35713b29f43cd"
 dependencies = [
  "anyhow",
  "rand 0.9.4",

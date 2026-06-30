@@ -711,3 +711,160 @@ pub fn process_heartbeat_config_response(
         }
     }
 }
+
+#[flutter_rust_bridge::frb]
+pub fn get_add_app_secret() -> String {
+    match secluso_app_native::get_add_app_secret() {
+        Ok(secret) => {
+            return secret;
+        }
+        Err(e) => {
+            info!("get_add_app_secret error: {}", e);
+            return format!("Error(get_add_app_secret): {}", e);
+        }
+    }
+}
+
+#[flutter_rust_bridge::frb]
+pub fn get_key_packages(camera_name: String) -> Vec<u8> {
+    let (camera_name, trace_id) = split_trace_camera(&camera_name);
+    let _trace_guard = logger::set_log_trace(trace_id);
+    let channel = CHANNEL_FIXED;
+    let client_mutex = get_or_create_channel_mutex(&camera_name, channel);
+    let op = "get_key_packages(config)".to_string();
+    let mut client_guard = lock_client_or_return!(
+        client_mutex,
+        &camera_name,
+        channel,
+        &op,
+        trace_id,
+        vec![]
+    );
+    if !ensure_client_initialized(&mut *client_guard, &camera_name, channel) {
+        return vec![];
+    }
+
+    let ret = match secluso_app_native::get_key_packages(&mut *client_guard) {
+        Ok(key_packages) => key_packages,
+        Err(e) => {
+            info!("Error: {}", e);
+            vec![]
+        }
+    };
+
+    ret
+}
+
+#[flutter_rust_bridge::frb]
+pub fn generate_add_app_request_config_command(
+    camera_name: String,
+    new_app_key_packages_vec: Vec<u8>,
+    secret: Vec<u8>,
+) -> Vec<u8> {
+    let (camera_name, trace_id) = split_trace_camera(&camera_name);
+    let _trace_guard = logger::set_log_trace(trace_id);
+    let channel = CHANNEL_FIXED;
+    let client_mutex = get_or_create_channel_mutex(&camera_name, channel);
+    let op = "generate_add_app_request_config_command(config)".to_string();
+    let mut client_guard = lock_client_or_return!(
+        client_mutex,
+        &camera_name,
+        channel,
+        &op,
+        trace_id,
+        vec![]
+    );
+    if !ensure_client_initialized(&mut *client_guard, &camera_name, channel) {
+        return vec![];
+    }
+
+    let ret = match secluso_app_native::generate_add_app_request_config_command(
+        &mut *client_guard,
+        new_app_key_packages_vec,
+        secret,
+    ) {
+        Ok(config_msg_enc) => config_msg_enc,
+        Err(e) => {
+            info!("Error: {}", e);
+            vec![]
+        }
+    };
+
+    ret
+}
+
+#[flutter_rust_bridge::frb]
+pub fn process_add_app_config_response(
+    camera_name: String,
+    config_response: Vec<u8>,
+    secret: Vec<u8>,
+) -> Vec<u8> {
+    let (camera_name, trace_id) = split_trace_camera(&camera_name);
+    let _trace_guard = logger::set_log_trace(trace_id);
+    let channel = CHANNEL_FIXED;
+    let client_mutex = get_or_create_channel_mutex(&camera_name, channel);
+    let op = "process_add_app_config_response(config)".to_string();
+    let mut client_guard = lock_client_or_return!(
+        client_mutex,
+        &camera_name,
+        channel,
+        &op,
+        trace_id,
+        vec![]
+    );
+    if !ensure_client_initialized(&mut *client_guard, &camera_name, channel) {
+        return vec![];
+    }
+
+    let ret = match secluso_app_native::process_add_app_config_response(
+        &mut *client_guard,
+        config_response,
+        secret,
+    ) {
+        Ok(new_app_data_vec) => new_app_data_vec,
+        Err(e) => {
+            info!("process_add_app_config_response error: {}", e);
+            vec![]
+        }
+    };
+
+    ret
+}
+
+#[flutter_rust_bridge::frb]
+pub fn join_camera_groups(
+    camera_name: String,
+    secret: Vec<u8>,
+    new_app_data_vec: Vec<u8>,
+) -> Vec<u64> {
+    let (camera_name, trace_id) = split_trace_camera(&camera_name);
+    let _trace_guard = logger::set_log_trace(trace_id);
+    let channel = CHANNEL_FIXED;
+    let client_mutex = get_or_create_channel_mutex(&camera_name, channel);
+    let op = "join_camera_groups(config)".to_string();
+    let mut client_guard = lock_client_or_return!(
+        client_mutex,
+        &camera_name,
+        channel,
+        &op,
+        trace_id,
+        vec![]
+    );
+    if !ensure_client_initialized(&mut *client_guard, &camera_name, channel) {
+        return vec![];
+    }
+
+    let ret = match secluso_app_native::join_camera_groups(
+        &mut *client_guard,
+        secret,
+        new_app_data_vec,
+    ) {
+        Ok(epochs) => epochs.to_vec(),
+        Err(e) => {
+            info!("join_camera_groups error: {}", e);
+            vec![]
+        }
+    };
+
+    ret
+}

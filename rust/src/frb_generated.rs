@@ -42,7 +42,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = -1355579577;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1139900320;
 
 // Section: executor
 
@@ -433,6 +433,46 @@ fn wire__crate__api__flutter_add_camera_impl(
         },
     )
 }
+fn wire__crate__api__generate_add_app_request_config_command_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "generate_add_app_request_config_command",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_camera_name = <String>::sse_decode(&mut deserializer);
+            let api_new_app_key_packages_vec = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_secret = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::generate_add_app_request_config_command(
+                            api_camera_name,
+                            api_new_app_key_packages_vec,
+                            api_secret,
+                        ))?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__generate_heartbeat_request_config_command_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -472,6 +512,38 @@ fn wire__crate__api__generate_heartbeat_request_config_command_impl(
         },
     )
 }
+fn wire__crate__api__get_add_app_secret_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_add_app_secret",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Result::<_, ()>::Ok(crate::api::get_add_app_secret())?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__get_group_name_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -503,6 +575,40 @@ fn wire__crate__api__get_group_name_impl(
                         api_client_tag,
                         api_camera_name,
                     ))?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__get_key_packages_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "get_key_packages",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_camera_name = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::get_key_packages(api_camera_name))?;
                     Ok(output_ok)
                 })())
             }
@@ -679,6 +785,45 @@ fn wire__crate__api__lock_manager__is_lock_held_impl(
         },
     )
 }
+fn wire__crate__api__join_camera_groups_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "join_camera_groups",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_camera_name = <String>::sse_decode(&mut deserializer);
+            let api_secret = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_new_app_data_vec = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Result::<_, ()>::Ok(crate::api::join_camera_groups(
+                        api_camera_name,
+                        api_secret,
+                        api_new_app_data_vec,
+                    ))?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__livestream_decrypt_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -783,6 +928,46 @@ fn wire__crate__api__ping_proprietary_device_impl(
                 transform_result_sse::<_, ()>((move || {
                     let output_ok =
                         Result::<_, ()>::Ok(crate::api::ping_proprietary_device(api_camera_ip))?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__process_add_app_config_response_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "process_add_app_config_response",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_camera_name = <String>::sse_decode(&mut deserializer);
+            let api_config_response = <Vec<u8>>::sse_decode(&mut deserializer);
+            let api_secret = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::process_add_app_config_response(
+                            api_camera_name,
+                            api_config_response,
+                            api_secret,
+                        ))?;
                     Ok(output_ok)
                 })())
             }
@@ -1126,6 +1311,18 @@ impl SseDecode for i64 {
     }
 }
 
+impl SseDecode for Vec<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
+        let mut len_ = <i32>::sse_decode(deserializer);
+        let mut ans_ = vec![];
+        for idx_ in 0..len_ {
+            ans_.push(<u64>::sse_decode(deserializer));
+        }
+        return ans_;
+    }
+}
+
 impl SseDecode for Vec<u8> {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
@@ -1217,32 +1414,47 @@ fn pde_ffi_dispatcher_primary_impl(
         8 => wire__crate__api__deregister_camera_impl(port, ptr, rust_vec_len, data_len),
         9 => wire__crate__api__encrypt_settings_message_impl(port, ptr, rust_vec_len, data_len),
         10 => wire__crate__api__flutter_add_camera_impl(port, ptr, rust_vec_len, data_len),
-        11 => wire__crate__api__generate_heartbeat_request_config_command_impl(
+        11 => wire__crate__api__generate_add_app_request_config_command_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        12 => wire__crate__api__get_group_name_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__logger__init_logger_impl(port, ptr, rust_vec_len, data_len),
-        16 => wire__crate__api__initialize_camera_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__lock_manager__is_lock_held_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__livestream_decrypt_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__livestream_update_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__ping_proprietary_device_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__process_heartbeat_config_response_impl(
+        12 => wire__crate__api__generate_heartbeat_request_config_command_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        22 => wire__crate__api__lock_manager__release_lock_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__rust_lib_version_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__logger__rust_set_up_impl(port, ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__logger__rust_shutdown_impl(port, ptr, rust_vec_len, data_len),
-        26 => wire__crate__api__shutdown_app_impl(port, ptr, rust_vec_len, data_len),
-        27 => {
+        13 => wire__crate__api__get_add_app_secret_impl(port, ptr, rust_vec_len, data_len),
+        14 => wire__crate__api__get_group_name_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__get_key_packages_impl(port, ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__logger__init_logger_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__initialize_camera_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__lock_manager__is_lock_held_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__join_camera_groups_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__livestream_decrypt_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__livestream_update_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__ping_proprietary_device_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__process_add_app_config_response_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        26 => wire__crate__api__process_heartbeat_config_response_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        27 => wire__crate__api__lock_manager__release_lock_impl(port, ptr, rust_vec_len, data_len),
+        28 => wire__crate__api__rust_lib_version_impl(port, ptr, rust_vec_len, data_len),
+        29 => wire__crate__api__logger__rust_set_up_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__logger__rust_shutdown_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__shutdown_app_impl(port, ptr, rust_vec_len, data_len),
+        32 => {
             wire__crate__api__lock_manager__try_acquire_lock_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -1257,7 +1469,7 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        13 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }
@@ -1393,6 +1605,16 @@ impl SseEncode for i64 {
     // Codec=Sse (Serialization based), see doc to use other codecs
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         serializer.cursor.write_i64::<NativeEndian>(self).unwrap();
+    }
+}
+
+impl SseEncode for Vec<u64> {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
+        <i32>::sse_encode(self.len() as _, serializer);
+        for item in self {
+            <u64>::sse_encode(item, serializer);
+        }
     }
 }
 

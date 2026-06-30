@@ -134,3 +134,39 @@ Future<String> processHeartbeatConfigResponse({
   configResponse: configResponse,
   expectedTimestamp: expectedTimestamp,
 );
+
+Future<String> getAddAppSecret() =>
+    RustLib.instance.api.crateApiGetAddAppSecret();
+
+Future<Uint8List> getKeyPackages({required String cameraName}) =>
+    RustLib.instance.api.crateApiGetKeyPackages(cameraName: cameraName);
+
+Future<Uint8List> generateAddAppRequestConfigCommand({
+  required String cameraName,
+  required List<int> newAppKeyPackagesVec,
+  required List<int> secret,
+}) => RustLib.instance.api.crateApiGenerateAddAppRequestConfigCommand(
+  cameraName: cameraName,
+  newAppKeyPackagesVec: newAppKeyPackagesVec,
+  secret: secret,
+);
+
+Future<Uint8List> processAddAppConfigResponse({
+  required String cameraName,
+  required List<int> configResponse,
+  required List<int> secret,
+}) => RustLib.instance.api.crateApiProcessAddAppConfigResponse(
+  cameraName: cameraName,
+  configResponse: configResponse,
+  secret: secret,
+);
+
+Future<Uint64List> joinCameraGroups({
+  required String cameraName,
+  required List<int> secret,
+  required List<int> newAppDataVec,
+}) => RustLib.instance.api.crateApiJoinCameraGroups(
+  cameraName: cameraName,
+  secret: secret,
+  newAppDataVec: newAppDataVec,
+);
