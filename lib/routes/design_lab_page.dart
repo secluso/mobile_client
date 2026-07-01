@@ -22,6 +22,7 @@ import 'package:secluso_flutter/routes/camera/view_video.dart';
 import 'package:secluso_flutter/routes/server_page.dart';
 import 'package:secluso_flutter/routes/system_shell_page.dart';
 import 'package:secluso_flutter/routes/camera-role/camera_role_pages.dart';
+import 'package:secluso_flutter/routes/onboarding/walkthrough_page.dart';
 import 'package:secluso_flutter/routes/settings_page.dart' as app_settings;
 import 'package:secluso_flutter/ui/secluso_preview_assets.dart';
 import 'package:secluso_flutter/routes/theme_provider.dart';
@@ -484,6 +485,15 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
         previewHasSynced: true,
         previewServerAddr: reviewSession.relayAddress,
         previewCameraNames: reviewSession.cameraNames,
+      );
+    case 'walkthrough_1':
+    case 'walkthrough_2':
+    case 'walkthrough_3':
+    case 'walkthrough_4':
+    case 'walkthrough_5':
+      return WalkthroughPage(
+        onDone: () {},
+        initialIndex: int.parse(target.split('_').last) - 1,
       );
     case 'role_select':
       return Builder(
