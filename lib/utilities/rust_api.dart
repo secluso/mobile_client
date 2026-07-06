@@ -61,6 +61,7 @@ Future<String> flutterAddCamera({
   required String password,
   required String pairingToken,
   required String credentialsFull,
+  required bool android,
 }) => raw.flutterAddCamera(
   cameraName: _cameraNameWithTrace(cameraName),
   ip: ip,
@@ -70,6 +71,7 @@ Future<String> flutterAddCamera({
   password: password,
   pairingToken: pairingToken,
   credentialsFull: credentialsFull,
+  android: android,
 );
 
 Future<void> shutdownApp() => raw.shutdownApp();

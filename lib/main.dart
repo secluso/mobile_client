@@ -44,6 +44,8 @@ import 'package:secluso_flutter/ui/font_licenses.dart';
 import 'package:secluso_flutter/ui/secluso_theme.dart';
 import 'package:secluso_flutter/routes/camera-role/camera_role_pages.dart';
 import 'package:secluso_flutter/routes/system_shell_page.dart';
+import 'package:secluso_flutter/routes/camera-role/android_camera_hub_launcher.dart';
+import 'package:secluso_flutter/utilities/device_role_controller.dart';
 import 'dart:isolate';
 
 final ReceivePort _mainReceivePort = ReceivePort();
@@ -954,8 +956,6 @@ Future<void> _checkForUpdates() async {
 
 final RouteObserver<ModalRoute<void>> routeObserver =
     RouteObserver<ModalRoute<void>>();
-const String _deviceRoleViewer = 'viewer';
-const String _deviceRoleCamera = 'camera';
 
 class StartupRoleGate extends StatefulWidget {
   const StartupRoleGate({super.key});
@@ -966,11 +966,28 @@ class StartupRoleGate extends StatefulWidget {
 
 class _StartupRoleGateState extends State<StartupRoleGate> {
   Widget? _page;
+  late final VoidCallback _roleSelectionListener;
 
   @override
   void initState() {
     super.initState();
+
+    _roleSelectionListener = () {
+      _show(_roleSelectPage());
+    };
+    DeviceRoleController.roleSelectionRequests.addListener(
+      _roleSelectionListener,
+    );
+
     _loadInitialPage();
+  }
+
+  @override
+  void dispose() {
+    DeviceRoleController.roleSelectionRequests.removeListener(
+      _roleSelectionListener,
+    );
+    super.dispose();
   }
 
   Future<void> _loadInitialPage() async {
@@ -978,13 +995,17 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
     final hasRelay = (prefs.getString(PrefKeys.serverAddr) ?? '').isNotEmpty;
     final role = prefs.getString(PrefKeys.deviceRole);
 
-    if (hasRelay || role == _deviceRoleViewer || !cameraRoleSupported) {
-      _show(const AppShell());
-    } else if (role == _deviceRoleCamera) {
+    if (role == DeviceRoleController.cameraRole && cameraRoleSupported) {
       _show(_pairingPage());
-    } else {
-      _show(_roleSelectPage());
+      return;
     }
+
+    if (hasRelay || role == DeviceRoleController.viewerRole || !cameraRoleSupported) {
+      _show(const AppShell());
+      return;
+    }
+
+    _show(_roleSelectPage());
   }
 
   void _show(Widget page) {
@@ -998,22 +1019,33 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
   );
 
   Widget _pairingPage() => CameraRolePairingPage(
-    onConnected: () => _show(_recordingPage()),
+    onConnected: (isRunning) => _show(_recordingPage(initialRunning: isRunning)),
     onClose: _returnToRoleSelect,
   );
 
-  Widget _recordingPage() =>
-      CameraRoleRecordingPage(onUnpair: _returnToRoleSelect);
+  Widget _recordingPage({bool initialRunning = false}) => CameraRoleRecordingPage(
+    initialRunning: initialRunning,
+    onStart: _startCameraRecording,
+    onStop: _stopCameraAndReturnToRoleSelect,
+    onResetCamera: _resetCameraAndReturnToPairing,
+    onSwitchRole: _switchFromCameraRole,
+  );
 
   Future<void> _returnToRoleSelect() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(PrefKeys.deviceRole);
+    await DeviceRoleController.clearRole();
     _show(_roleSelectPage());
   }
 
+  Future<void> _stopCameraAndReturnToRoleSelect() async {
+    await AndroidCameraHubLauncher.stopHub();
+  }
+
+  Future<void> _startCameraRecording() async {
+    await AndroidCameraHubLauncher.startHub();
+  }
+
   Future<void> _chooseViewerRole() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(PrefKeys.deviceRole, _deviceRoleViewer);
+    await DeviceRoleController.setViewerRole();
     _show(const AppShell(initialIndex: 2));
   }
 
@@ -1026,9 +1058,38 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
       );
       return;
     }
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(PrefKeys.deviceRole, _deviceRoleCamera);
+
+    await DeviceRoleController.setCameraRole();
     _show(_pairingPage());
+  }
+
+  Future<void> _resetCameraAndReturnToPairing() async {
+    await AndroidCameraHubLauncher.resetCameraState();
+
+    if (!mounted) return;
+    _show(_pairingPage());
+  }
+
+  Future<void> _switchFromCameraRole() async {
+    final isStillPaired =
+        await AndroidCameraHubLauncher.hasCompletedFirstPairing();
+
+    if (isStillPaired) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Reset this camera before switching roles.',
+          ),
+        ),
+      );
+      return;
+    }
+
+    await DeviceRoleController.clearRole();
+
+    if (!mounted) return;
+    _show(_roleSelectPage());
   }
 
   @override

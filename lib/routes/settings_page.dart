@@ -21,6 +21,9 @@ import 'package:secluso_flutter/ui/secluso_shell_ui.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
 import 'package:secluso_flutter/utilities/storage_manager.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:secluso_flutter/database/app_stores.dart';
+import 'package:secluso_flutter/utilities/app_coordination_state.dart';
+import 'package:secluso_flutter/utilities/device_role_controller.dart';
 
 enum SettingsPreviewScrollPosition { top, bottom, veryBottom }
 
@@ -140,6 +143,59 @@ class _SettingsPageState extends State<SettingsPage> {
       }
       _scrollController.jumpTo(target.clamp(0, max));
     });
+  }
+
+  Future<void> _switchRoleFromViewer() async {
+    if (_isPreviewMode) return;
+  
+    final coordinatedCameras = await AppCoordinationState.getCameraSet();
+    final storedCameras = await AppStores.instance.cameraStore.getAllAsync();
+  
+    final cameraNames = <String>{
+      ...coordinatedCameras.map((name) => name.trim()).where((name) => name.isNotEmpty),
+      ...storedCameras.map((camera) => camera.name.trim()).where((name) => name.isNotEmpty),
+    }.toList();
+  
+    if (cameraNames.isNotEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            cameraNames.length == 1
+                ? 'Delete your paired camera before switching roles.'
+                : 'Delete all ${cameraNames.length} paired cameras before switching roles.',
+          ),
+        ),
+      );
+      return;
+    }
+  
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Switch device role?'),
+          content: const Text(
+            'This returns to role selection for this phone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Switch Role'),
+            ),
+          ],
+        );
+      },
+    );
+  
+    if (confirmed != true) return;
+  
+    await DeviceRoleController.clearRole();
+    DeviceRoleController.requestRoleSelection();
   }
 
   Future<void> _loadSettings() async {
@@ -564,6 +620,37 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           SizedBox(height: shell ? shellMetrics.sectionGap : 22),
         ],
+        ShellSettingsGroup(
+          title: 'Device',
+          titleStyle: sectionTitleStyle,
+          titleGap: shell ? shellMetrics.sectionTitleGap : 12,
+          radius: shell ? shellMetrics.groupRadius : 22,
+          cardColor: shell ? shellSurfaceColor : null,
+          borderColor: shell ? shellSurfaceBorderColor : null,
+          dividerColor: shell ? shellDividerColor : null,
+          boxShadow: shell ? shellCardShadow : null,
+          children: [
+            ShellSettingsRow(
+              title: 'Switch Role',
+              value: 'Viewer',
+              onTap: _switchRoleFromViewer,
+              height: shell ? shellMetrics.rowHeight : 56,
+              horizontalPadding: shell ? shellMetrics.rowHorizontalPadding : 18,
+              titleFontSize: shell ? shellMetrics.rowTitleSize : 16,
+              valueFontSize: shell ? shellMetrics.rowValueSize : 16,
+              titleWeight: shell ? FontWeight.w400 : FontWeight.w500,
+              valueWeight: shell ? FontWeight.w400 : FontWeight.w500,
+              chevronSize: shell ? shellMetrics.chevronSize : 24,
+              valueChevronGap: shell ? 8 : 10,
+              titleColor: shell ? shellPrimaryTextColor : null,
+              valueColor: shell ? shellSecondaryTextColor : null,
+              chevronColor: shell ? shellChevronColor : null,
+              titleStyle: shellRowTitleStyle,
+              valueStyle: shellRowValueStyle,
+            ),
+          ],
+        ),
+        SizedBox(height: shell ? shellMetrics.sectionGap : 22),
         ShellSettingsGroup(
           title: 'Appearance',
           titleStyle: sectionTitleStyle,

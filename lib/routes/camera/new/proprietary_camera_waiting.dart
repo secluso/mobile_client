@@ -352,6 +352,7 @@ class _ProprietaryCameraWaitingDialogState
         widget.wifiSsid,
         widget.wifiPassword,
         pairingToken,
+	false,
       );
 
       Log.d('addCamera returned: $versionInfoJson');
