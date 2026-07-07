@@ -421,7 +421,7 @@ TextSpan _b(String text) => TextSpan(
 );
 
 const double _wide = 1.6;
-const double _crowd = 100 / 52;
+const double _crowd = 100 / 62;
 
 final List<_Panel> _kPanels = [
   _Panel(
