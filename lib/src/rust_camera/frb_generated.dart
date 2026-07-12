@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 1134842526;
+  int get rustContentHash => 920913443;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -75,6 +75,8 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<String> crateApiGetAndroidCameraSpecsJson();
+
   Future<void> crateApiResetAndroidCameraHub({
     required String workDir,
     required String serverUsername,
@@ -89,6 +91,14 @@ abstract class RustLibApi extends BaseApi {
     required String serverAddr,
   });
 
+  Future<void> crateApiSetAndroidCameraSettings({
+    required int facing,
+    required int width,
+    required int height,
+    required int frameRateMin,
+    required int frameRateMax,
+  });
+
   Future<void> crateApiStopAndroidCameraHub();
 }
 
@@ -99,6 +109,36 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required super.generalizedFrbRustBinding,
     required super.portManager,
   });
+
+  @override
+  Future<String> crateApiGetAndroidCameraSpecsJson() {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_String,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiGetAndroidCameraSpecsJsonConstMeta,
+        argValues: [],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiGetAndroidCameraSpecsJsonConstMeta =>
+      const TaskConstMeta(
+        debugName: "get_android_camera_specs_json",
+        argNames: [],
+      );
 
   @override
   Future<void> crateApiResetAndroidCameraHub({
@@ -176,6 +216,53 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(
         debugName: "start_android_camera_hub",
         argNames: ["workDir", "serverUsername", "serverPassword", "serverAddr"],
+      );
+
+  @override
+  Future<void> crateApiSetAndroidCameraSettings({
+    required int facing,
+    required int width,
+    required int height,
+    required int frameRateMin,
+    required int frameRateMax,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_32(facing, serializer);
+          sse_encode_i_32(width, serializer);
+          sse_encode_i_32(height, serializer);
+          sse_encode_i_32(frameRateMin, serializer);
+          sse_encode_i_32(frameRateMax, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiSetAndroidCameraSettingsConstMeta,
+        argValues: [facing, width, height, frameRateMin, frameRateMax],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiSetAndroidCameraSettingsConstMeta =>
+      const TaskConstMeta(
+        debugName: "set_android_camera_settings",
+        argNames: [
+          "facing",
+          "width",
+          "height",
+          "frameRateMin",
+          "frameRateMax",
+        ],
       );
 
   @override

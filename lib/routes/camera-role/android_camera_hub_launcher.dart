@@ -13,7 +13,90 @@ import 'package:secluso_flutter/utilities/app_paths.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+class AndroidCameraResolution {
+  const AndroidCameraResolution({required this.width, required this.height});
+
+  final int width;
+  final int height;
+
+  factory AndroidCameraResolution.fromJson(Map<String, Object?> json) {
+    return AndroidCameraResolution(
+      width: json['width'] as int,
+      height: json['height'] as int,
+    );
+  }
+
+  String get label => '${width}x$height';
+}
+
+class AndroidCameraFrameRateRange {
+  const AndroidCameraFrameRateRange({required this.min, required this.max});
+
+  final int min;
+  final int max;
+
+  factory AndroidCameraFrameRateRange.fromJson(Map<String, Object?> json) {
+    return AndroidCameraFrameRateRange(
+      min: json['min'] as int,
+      max: json['max'] as int,
+    );
+  }
+
+  String get label => min == max ? '$max fps' : '$min-$max fps';
+}
+
+class AndroidCameraSpec {
+  const AndroidCameraSpec({
+    required this.facing,
+    required this.resolutions,
+    required this.frameRateRanges,
+  });
+
+  final int facing;
+  final List<AndroidCameraResolution> resolutions;
+  final List<AndroidCameraFrameRateRange> frameRateRanges;
+
+  factory AndroidCameraSpec.fromJson(Map<String, Object?> json) {
+    return AndroidCameraSpec(
+      facing: json['facing'] as int,
+      resolutions:
+          (json['resolutions'] as List<Object?>)
+              .map((item) => Map<String, Object?>.from(item as Map))
+              .map(AndroidCameraResolution.fromJson)
+              .toList(growable: false),
+      frameRateRanges:
+          (json['frame_rate_ranges'] as List<Object?>)
+              .map((item) => Map<String, Object?>.from(item as Map))
+              .map(AndroidCameraFrameRateRange.fromJson)
+              .toList(growable: false),
+    );
+  }
+
+  String get facingLabel => switch (facing) {
+    AndroidCameraHubLauncher.facingFront => 'Front camera',
+    AndroidCameraHubLauncher.facingBack => 'Back camera',
+    // This should be unreachable given that our Rust code only returns front and back cameras.
+    _ => 'Unsupported',
+  };
+}
+
+class AndroidCameraSettings {
+  const AndroidCameraSettings({
+    required this.facing,
+    required this.width,
+    required this.height,
+    required this.frameRateRange,
+  });
+
+  final int facing;
+  final int width;
+  final int height;
+  final AndroidCameraFrameRateRange frameRateRange;
+}
+
 class AndroidCameraHubLauncher {
+  static const facingBack = 0;
+  static const facingFront = 1;
   static const _qrPollAttempts = 60;
   static const _qrPollInterval = Duration(milliseconds: 500);
 
@@ -30,6 +113,40 @@ class AndroidCameraHubLauncher {
   static Future<bool> hasCompletedFirstPairing() async {
     final file = await firstTimeDoneFile();
     return file.exists();
+  }
+
+  static Future<List<AndroidCameraSpec>> cameraSpecs() async {
+    if (!Platform.isAndroid) {
+      return const [];
+    }
+
+    final cameraPermission = await Permission.camera.request();
+    if (!cameraPermission.isGranted) {
+      throw StateError('Camera permission is required.');
+    }
+
+    await RustCameraLibGuard.initOnce();
+    final specsJson = await rust_camera_api.getAndroidCameraSpecsJson();
+    final decoded = jsonDecode(specsJson) as List<Object?>;
+    return decoded
+        .map((item) => Map<String, Object?>.from(item as Map))
+        .map(AndroidCameraSpec.fromJson)
+        .toList(growable: false);
+  }
+
+  static Future<void> setCameraSettings(AndroidCameraSettings settings) async {
+    if (!Platform.isAndroid) {
+      return;
+    }
+
+    await RustCameraLibGuard.initOnce();
+    await rust_camera_api.setAndroidCameraSettings(
+      facing: settings.facing,
+      width: settings.width,
+      height: settings.height,
+      frameRateMin: settings.frameRateRange.min,
+      frameRateMax: settings.frameRateRange.max,
+    );
   }
 
   static Future<void> startHub() async {

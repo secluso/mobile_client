@@ -22,6 +22,48 @@ fn init_logger() {
 */
 
 #[flutter_rust_bridge::frb]
+pub fn get_android_camera_specs_json() -> Result<String, String> {
+    let specs = secluso_camera_hub::get_android_camera_specs()
+        .map_err(|e| format!("failed to get Android camera specs: {e}"))?;
+
+    Ok(android_camera_specs_to_json(&specs))
+}
+
+#[flutter_rust_bridge::frb]
+pub fn set_android_camera_settings(
+    facing: i32,
+    width: i32,
+    height: i32,
+    frame_rate_min: i32,
+    frame_rate_max: i32,
+) -> Result<(), String> {
+    if width <= 0
+        || height <= 0
+        || frame_rate_min <= 0
+        || frame_rate_max <= 0
+        || frame_rate_min > frame_rate_max
+    {
+        return Err(
+            "camera width and height must be positive, and frame rate range must be positive and ordered"
+                .to_string(),
+        );
+    }
+
+    secluso_camera_hub::set_android_camera_settings(
+        secluso_camera_hub::AndroidCameraSettings {
+            facing,
+            width: width as usize,
+            height: height as usize,
+            frame_rate_range: secluso_camera_hub::AndroidCameraFrameRateRange {
+                min: frame_rate_min,
+                max: frame_rate_max,
+            },
+        },
+    )
+    .map_err(|e| format!("failed to set Android camera settings: {e}"))
+}
+
+#[flutter_rust_bridge::frb]
 pub fn start_android_camera_hub(
     work_dir: String,
     server_username: String,
@@ -68,6 +110,42 @@ pub fn start_android_camera_hub(
         })?;
 
     Ok(())
+}
+
+fn android_camera_specs_to_json(specs: &[secluso_camera_hub::AndroidCameraSpec]) -> String {
+    let mut out = String::from("[");
+    for (index, spec) in specs.iter().enumerate() {
+        if index > 0 {
+            out.push(',');
+        }
+        out.push_str("{\"facing\":");
+        out.push_str(&spec.facing.to_string());
+        out.push_str(",\"resolutions\":[");
+        for (resolution_index, resolution) in spec.resolutions.iter().enumerate() {
+            if resolution_index > 0 {
+                out.push(',');
+            }
+            out.push_str("{\"width\":");
+            out.push_str(&resolution.width.to_string());
+            out.push_str(",\"height\":");
+            out.push_str(&resolution.height.to_string());
+            out.push('}');
+        }
+        out.push_str("],\"frame_rate_ranges\":[");
+        for (range_index, range) in spec.frame_rate_ranges.iter().enumerate() {
+            if range_index > 0 {
+                out.push(',');
+            }
+            out.push_str("{\"min\":");
+            out.push_str(&range.min.to_string());
+            out.push_str(",\"max\":");
+            out.push_str(&range.max.to_string());
+            out.push('}');
+        }
+        out.push_str("]}");
+    }
+    out.push(']');
+    out
 }
 
 #[flutter_rust_bridge::frb]
