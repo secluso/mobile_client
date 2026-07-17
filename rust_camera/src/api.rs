@@ -3,11 +3,17 @@
 //! SPDX-License-Identifier: GPL-3.0-or-later
 
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 //use std::sync::Once;
-use std::thread;
+use std::thread::{self, JoinHandle};
 
 //static INIT_LOGGER: Once = Once::new();
 static CAMERA_HUB_STARTED: AtomicBool = AtomicBool::new(false);
+static CAMERA_HUB_THREAD: OnceLock<Mutex<Option<JoinHandle<()>>>> = OnceLock::new();
+
+fn camera_hub_thread() -> &'static Mutex<Option<JoinHandle<()>>> {
+    CAMERA_HUB_THREAD.get_or_init(|| Mutex::new(None))
+}
 
 /* Uncomment for debugging.
 fn init_logger() {
@@ -15,7 +21,7 @@ fn init_logger() {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_tag("SeclusoRustCamera")
-                .with_max_level(log::LevelFilter::Trace),
+                .with_max_level(log::LevelFilter::Info),
         );
     });
 }
@@ -81,7 +87,7 @@ pub fn start_android_camera_hub(
     std::fs::create_dir_all(&work_dir)
         .map_err(|e| format!("failed to create camera hub work dir: {e}"))?;
 
-    thread::Builder::new()
+    let handle = thread::Builder::new()
         .name("secluso-camera-hub".to_string())
         .spawn(move || {
             log::info!("camera hub thread started");
@@ -108,6 +114,8 @@ pub fn start_android_camera_hub(
             CAMERA_HUB_STARTED.store(false, Ordering::SeqCst);
             format!("failed to spawn camera hub thread: {e}")
         })?;
+
+    *camera_hub_thread().lock().unwrap() = Some(handle);
 
     Ok(())
 }
@@ -192,10 +200,17 @@ pub fn reset_android_camera_hub(
 pub fn stop_android_camera_hub() -> Result<(), String> {
     //init_logger();
 
-    log::info!("stop_android_camera_hub called; exiting app process");
-    std::process::exit(0);
-    //unsafe {
-    //    libc::_exit(0);
-    //}
-    
+    log::info!("stop_android_camera_hub called");
+    secluso_camera_hub::stop_android();
+
+    if let Some(handle) = camera_hub_thread().lock().unwrap().take() {
+        handle
+            .join()
+            .map_err(|_| "camera hub thread join failed".to_string())?;
+    }
+
+    CAMERA_HUB_STARTED.store(false, Ordering::SeqCst);
+    log::info!("camera hub stopped");
+
+    Ok(())
 }

@@ -174,8 +174,7 @@ class _CameraRoleRecordingPageState extends State<CameraRoleRecordingPage> {
             ],
           ),
           content: const Text(
-            'This will stop recording and close the app. '
-            'Relaunch the app to resume recording later.',
+            'This will stop recording and return to role selection.',
           ),
           actions: [
             FilledButton(

@@ -1036,8 +1036,73 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
     _show(_roleSelectPage());
   }
 
+  Widget _cameraStoppingPage() => const Scaffold(
+    backgroundColor: Color(0xFF0B0B0B),
+    body: SafeArea(
+      child: Center(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 48,
+                height: 48,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                ),
+              ),
+              SizedBox(height: 24),
+              Text(
+                'Stopping camera…',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              SizedBox(height: 12),
+              Text(
+                'Wait while we wind down the camera recording.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Color(0x99FFFFFF),
+                  fontSize: 15,
+                  height: 1.4,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
   Future<void> _stopCameraAndReturnToRoleSelect() async {
-    await AndroidCameraHubLauncher.stopHub();
+    if (!mounted) return;
+
+    _show(_cameraStoppingPage());
+
+    try {
+      await AndroidCameraHubLauncher.stopHub();
+
+      if (!mounted) return;
+
+      await _returnToRoleSelect();
+    } catch (e) {
+      if (!mounted) return;
+
+      _show(_recordingPage(initialRunning: true));
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unable to stop camera: $e'),
+          ),
+        );
+      });
+    }
   }
 
   Future<void> _startCameraRecording() async {

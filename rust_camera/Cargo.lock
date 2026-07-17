@@ -3559,7 +3559,7 @@ dependencies = [
 [[package]]
 name = "secluso-camera-hub"
 version = "1.0.2"
-source = "git+https://github.com/secluso/core?rev=934e5bf20ebde3ad67d7100b9ac884d3687248e3#934e5bf20ebde3ad67d7100b9ac884d3687248e3"
+source = "git+https://github.com/secluso/core?rev=05754633140b8315764aa887f13eac60cea87da9#05754633140b8315764aa887f13eac60cea87da9"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3586,7 +3586,7 @@ dependencies = [
 [[package]]
 name = "secluso-client-lib"
 version = "1.0.2"
-source = "git+https://github.com/secluso/core?rev=934e5bf20ebde3ad67d7100b9ac884d3687248e3#934e5bf20ebde3ad67d7100b9ac884d3687248e3"
+source = "git+https://github.com/secluso/core?rev=05754633140b8315764aa887f13eac60cea87da9#05754633140b8315764aa887f13eac60cea87da9"
 dependencies = [
  "anyhow",
  "base64",
@@ -3609,7 +3609,7 @@ dependencies = [
 [[package]]
 name = "secluso-client-server-lib"
 version = "1.0.2"
-source = "git+https://github.com/secluso/core?rev=934e5bf20ebde3ad67d7100b9ac884d3687248e3#934e5bf20ebde3ad67d7100b9ac884d3687248e3"
+source = "git+https://github.com/secluso/core?rev=05754633140b8315764aa887f13eac60cea87da9#05754633140b8315764aa887f13eac60cea87da9"
 dependencies = [
  "anyhow",
  "rand 0.9.4",
@@ -3620,7 +3620,7 @@ dependencies = [
 [[package]]
 name = "secluso-motion-ai"
 version = "1.0.2"
-source = "git+https://github.com/secluso/core?rev=934e5bf20ebde3ad67d7100b9ac884d3687248e3#934e5bf20ebde3ad67d7100b9ac884d3687248e3"
+source = "git+https://github.com/secluso/core?rev=05754633140b8315764aa887f13eac60cea87da9#05754633140b8315764aa887f13eac60cea87da9"
 dependencies = [
  "anyhow",
  "chrono",
