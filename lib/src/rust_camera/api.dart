@@ -8,8 +8,13 @@ import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
 // These functions are ignored because they are not marked as `pub`: `init_logger`, `take_camera_hub_thread`
 
-Future<String> getAndroidCameraSpecsJson() =>
-    RustLib.instance.api.crateApiGetAndroidCameraSpecsJson();
+Future<String> getAndroidCameraSpecsJson({
+  required int displayWidth,
+  required int displayHeight,
+}) => RustLib.instance.api.crateApiGetAndroidCameraSpecsJson(
+  displayWidth: displayWidth,
+  displayHeight: displayHeight,
+);
 
 Future<void> setAndroidCameraSettings({
   required int facing,

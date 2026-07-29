@@ -75,7 +75,10 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
-  Future<String> crateApiGetAndroidCameraSpecsJson();
+  Future<String> crateApiGetAndroidCameraSpecsJson({
+    required int displayWidth,
+    required int displayHeight,
+  });
 
   Future<void> crateApiResetAndroidCameraHub({
     required String workDir,
@@ -111,11 +114,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<String> crateApiGetAndroidCameraSpecsJson() {
+  Future<String> crateApiGetAndroidCameraSpecsJson({
+    required int displayWidth,
+    required int displayHeight,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
           final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_i_32(displayWidth, serializer);
+          sse_encode_i_32(displayHeight, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -128,7 +136,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiGetAndroidCameraSpecsJsonConstMeta,
-        argValues: [],
+        argValues: [displayWidth, displayHeight],
         apiImpl: this,
       ),
     );
@@ -137,7 +145,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiGetAndroidCameraSpecsJsonConstMeta =>
       const TaskConstMeta(
         debugName: "get_android_camera_specs_json",
-        argNames: [],
+        argNames: ["displayWidth", "displayHeight"],
       );
 
   @override

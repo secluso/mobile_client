@@ -28,8 +28,18 @@ fn init_logger() {
 */
 
 #[flutter_rust_bridge::frb]
-pub fn get_android_camera_specs_json() -> Result<String, String> {
-    let specs = secluso_camera_hub::get_android_camera_specs()
+pub fn get_android_camera_specs_json(
+    display_width: i32,
+    display_height: i32,
+) -> Result<String, String> {
+    if display_width <= 0 || display_height <= 0 {
+        return Err("display dimensions must be positive".to_string());
+    }
+
+    let specs = secluso_camera_hub::get_android_camera_specs(
+        display_width as usize,
+        display_height as usize,
+    )
         .map_err(|e| format!("failed to get Android camera specs: {e}"))?;
 
     Ok(android_camera_specs_to_json(&specs))

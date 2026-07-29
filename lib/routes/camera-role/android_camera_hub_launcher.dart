@@ -4,6 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:secluso_flutter/keys.dart';
@@ -126,7 +127,20 @@ class AndroidCameraHubLauncher {
     }
 
     await RustCameraLibGuard.initOnce();
-    final specsJson = await rust_camera_api.getAndroidCameraSpecsJson();
+    final views = WidgetsBinding.instance.platformDispatcher.views;
+    if (views.isEmpty) {
+      throw StateError('No Flutter display is available.');
+    }
+    final physicalSize = views.first.physicalSize;
+    final displayWidth = physicalSize.width.round();
+    final displayHeight = physicalSize.height.round();
+    if (displayWidth <= 0 || displayHeight <= 0) {
+      throw StateError('The Flutter display has invalid physical dimensions.');
+    }
+    final specsJson = await rust_camera_api.getAndroidCameraSpecsJson(
+      displayWidth: displayWidth,
+      displayHeight: displayHeight,
+    );
     final decoded = jsonDecode(specsJson) as List<Object?>;
     return decoded
         .map((item) => Map<String, Object?>.from(item as Map))

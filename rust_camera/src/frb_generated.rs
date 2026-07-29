@@ -70,10 +70,15 @@ fn wire__crate__api__get_android_camera_specs_json_impl(
             };
             let mut deserializer =
                 flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_display_width = <i32>::sse_decode(&mut deserializer);
+            let api_display_height = <i32>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
-                    let output_ok = crate::api::get_android_camera_specs_json()?;
+                    let output_ok = crate::api::get_android_camera_specs_json(
+                        api_display_width,
+                        api_display_height,
+                    )?;
                     Ok(output_ok)
                 })())
             }
