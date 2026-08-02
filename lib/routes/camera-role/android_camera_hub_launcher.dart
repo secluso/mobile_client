@@ -93,6 +93,12 @@ class AndroidCameraSettings {
   final int width;
   final int height;
   final AndroidCameraFrameRateRange frameRateRange;
+
+  String get facingLabel => switch (facing) {
+    AndroidCameraHubLauncher.facingFront => 'Front camera',
+    AndroidCameraHubLauncher.facingBack => 'Back camera',
+    _ => 'Unsupported camera',
+  };
 }
 
 class AndroidCameraHubLauncher {

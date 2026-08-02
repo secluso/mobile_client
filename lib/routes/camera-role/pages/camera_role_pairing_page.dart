@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:secluso_flutter/routes/camera-role/android_camera_hub_launcher.dart';
 import 'package:secluso_flutter/routes/camera-role/pages/camera_role_recording_page.dart';
+import 'package:secluso_flutter/routes/camera-role/pages/camera_role_preview_page.dart';
 import 'package:secluso_flutter/routes/camera-role/theme.dart';
 import 'package:secluso_flutter/routes/camera-role/widgets/qr_card.dart';
 import 'package:secluso_flutter/routes/camera-role/widgets/shared_widgets.dart';
@@ -187,6 +188,31 @@ class _CameraRolePairingPageState extends State<CameraRolePairingPage> {
   void _selectFrameRateRange(AndroidCameraFrameRateRange? range) {
     if (range == null) return;
     setState(() => _selectedFrameRateRange = range);
+  }
+
+  Future<void> _previewCamera() async {
+    final selectedSpec = _selectedSpec;
+    final selectedResolution = _selectedResolution;
+    final selectedFrameRateRange = _selectedFrameRateRange;
+    if (selectedSpec == null ||
+        selectedResolution == null ||
+        selectedFrameRateRange == null) {
+      return;
+    }
+
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (_) => CameraRolePreviewPage(
+              settings: AndroidCameraSettings(
+                facing: selectedSpec.facing,
+                width: selectedResolution.width,
+                height: selectedResolution.height,
+                frameRateRange: selectedFrameRateRange,
+              ),
+            ),
+      ),
+    );
   }
 
   Future<void> _startFirstTimePairing() async {
@@ -388,10 +414,21 @@ class _CameraRolePairingPageState extends State<CameraRolePairingPage> {
                       label: const Text('Try again'),
                     )
                   else if (readyToConfigure)
-                    FilledButton.icon(
-                      onPressed: _bootCameraRole,
-                      icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Start Camera'),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _previewCamera,
+                          icon: const Icon(Icons.visibility_outlined),
+                          label: const Text('Preview Camera'),
+                        ),
+                        SizedBox(height: sz(10)),
+                        FilledButton.icon(
+                          onPressed: _bootCameraRole,
+                          icon: const Icon(Icons.play_arrow_rounded),
+                          label: const Text('Start Camera'),
+                        ),
+                      ],
                     )
                   else if (_loadingSpecs)
                     Row(

@@ -260,5 +260,12 @@ class MainActivity : FlutterActivity() {
                 "byte_player_view",
                 BytePlayerViewFactory(flutterEngine.dartExecutor.binaryMessenger)
             )
+        flutterEngine
+            .platformViewsController
+            .registry
+            .registerViewFactory(
+                "secluso_camera_preview",
+                CameraPreviewViewFactory(flutterEngine.dartExecutor.binaryMessenger)
+            )
     }
 }
