@@ -630,7 +630,10 @@ class PushNotificationService {
             );
             continue;
           }
-          if (response == 'Download') {
+          if (response == 'New info') {
+            Log.d("Processing new app information");
+            await processNewAppInfoNotification(cameraName);
+          } else if (response == 'Download') {
             Log.d("Downloading video");
             final bool allowCellular = true;
 

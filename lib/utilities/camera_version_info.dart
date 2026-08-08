@@ -2,6 +2,12 @@
 
 import 'dart:convert';
 
+bool shouldNotifyFirmwareUpdate(String? currentFirmware, String newFirmware) {
+  return currentFirmware != null &&
+      currentFirmware.isNotEmpty &&
+      currentFirmware != newFirmware;
+}
+
 class CameraVersionInfo {
   final String firmwareVersion;
   final String osVersion;

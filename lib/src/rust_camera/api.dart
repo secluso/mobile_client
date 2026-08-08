@@ -6,7 +6,7 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `init_logger`, `take_camera_hub_thread`
+// These functions are ignored because they are not marked as `pub`: `android_camera_specs_to_json`, `camera_hub_thread`
 
 Future<String> getAndroidCameraSpecsJson({
   required int displayWidth,
