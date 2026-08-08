@@ -21,7 +21,7 @@ tracing-log = "0.2.0"
 
 [dependencies.secluso-app-native]
 git = "https://github.com/secluso/secluso"
-rev = "a38c1e01ba81c5f3185f3219a3c35713b29f43cd"
+rev = "3d7b28a171ac35ceea971653091a5f760a0ca7ef"
 package = "secluso-app-native"
 
 [lints.rust]

@@ -414,6 +414,7 @@ fn wire__crate__api__flutter_add_camera_impl(
             let api_password = <String>::sse_decode(&mut deserializer);
             let api_pairing_token = <String>::sse_decode(&mut deserializer);
             let api_credentials_full = <String>::sse_decode(&mut deserializer);
+            let api_android = <bool>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, ()>((move || {
@@ -426,6 +427,7 @@ fn wire__crate__api__flutter_add_camera_impl(
                         api_password,
                         api_pairing_token,
                         api_credentials_full,
+                        api_android,
                     ))?;
                     Ok(output_ok)
                 })())

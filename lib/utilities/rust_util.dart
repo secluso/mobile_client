@@ -44,6 +44,7 @@ Future<String> addCamera(
   String ssid,
   String password,
   String pairingToken,
+  bool android,
 ) async {
   Log.d("In addCamera");
   final initOutcome = await initialize(cameraName);
@@ -75,6 +76,7 @@ Future<String> addCamera(
     password: password,
     pairingToken: pairingToken,
     credentialsFull: serverUsername + serverPassword + serverAddress,
+    android: android,
   );
 }
 

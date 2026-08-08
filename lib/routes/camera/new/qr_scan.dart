@@ -6,6 +6,7 @@ import 'package:flutter_zxing/flutter_zxing.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:secluso_flutter/constants.dart';
 import 'dart:async';
+import 'package:secluso_flutter/routes/camera/new/android_camera_option.dart';
 import 'package:secluso_flutter/routes/camera/new/ip_camera_option.dart';
 import 'package:secluso_flutter/routes/camera/new/proprietary_camera_option.dart';
 import 'package:secluso_flutter/routes/camera/new/proprietary_camera_waiting.dart';
@@ -295,7 +296,7 @@ class SeclusoQrScanScreen extends StatelessWidget {
   }
 }
 
-enum GenericCameraQrKind { proprietary, ip, review, addApp }
+enum GenericCameraQrKind { proprietary, ip, android, review, addApp }
 
 class GenericCameraQrPayload {
   const GenericCameraQrPayload._({
@@ -328,6 +329,15 @@ class GenericCameraQrPayload {
       kind: GenericCameraQrKind.proprietary,
       rawQrBytes: rawQrBytes,
       hotspotPassword: hotspotPassword,
+    );
+  }
+
+  factory GenericCameraQrPayload.android({
+    required Uint8List rawQrBytes,
+  }) {
+    return GenericCameraQrPayload._(
+      kind: GenericCameraQrKind.android,
+      rawQrBytes: rawQrBytes,
     );
   }
 
@@ -449,6 +459,36 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
     return 'Camera access is required to scan QR codes.';
   }
 
+  Uint8List? _decodeCameraSecret(String encoded) {
+    final candidates = <String>[
+      encoded.trim(),
+      base64Url.normalize(encoded.trim()),
+      base64.normalize(encoded.trim()),
+    ];
+
+    for (final candidate in candidates) {
+      try {
+        return Uint8List.fromList(base64Url.decode(candidate));
+      } catch (_) {}
+
+      try {
+        return Uint8List.fromList(base64.decode(candidate));
+      } catch (_) {}
+    }
+
+    return null;
+  }
+
+  String? _stringFromAny(Map decoded, List<String> keys) {
+    for (final key in keys) {
+      final value = decoded[key];
+      if (value is String && value.trim().isNotEmpty) {
+        return value.trim();
+      }
+    }
+    return null;
+  }
+
   Widget? _cameraPermissionActions(BuildContext context) {
     final status = _cameraPermissionStatus;
     if (status == null || status.isGranted) {
@@ -528,6 +568,11 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
           initialCameraName: payload.initialCameraName,
           initialCameraIp: payload.initialCameraIp,
         );
+      case GenericCameraQrKind.android:
+        result = await AndroidCameraDialog.showAndroidCameraPopup(
+          context,
+          initialQrCode: payload.rawQrBytes!,
+        );
       case GenericCameraQrKind.review:
         final reviewPayload = payload.reviewPayload;
         if (reviewPayload == null) {
@@ -606,10 +651,11 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
           cameraSecret is String &&
           versionKey == Constants.cameraQrCodeVersion) {
         try {
-          final rawBytes = base64Decode(cameraSecret);
-          if (rawBytes.length == Constants.numCameraSecretBytes) {
-            final hotspotPassword = decoded['wp'];
-            if (hotspotPassword is String && hotspotPassword.isNotEmpty) {              
+          final rawBytes = _decodeCameraSecret(cameraSecret);
+          final hotspotPassword = decoded['wp'];
+          if (rawBytes != null &&
+              rawBytes.length == Constants.numCameraSecretBytes) {
+            if (hotspotPassword is String && hotspotPassword.isNotEmpty) {
               return GenericCameraQrPayload.proprietary(
                 rawBytes,
                 hotspotPassword,
@@ -619,18 +665,18 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
             final serverAddr = decoded['sa'];
             final serverUsername = decoded['su'];
 
-            if (serverAddr is! String ||
-                serverAddr.trim().isEmpty ||
-                serverUsername is! String ||
-                serverUsername.trim().isEmpty) {
-              return null;
+            if (serverAddr is String &&
+                serverAddr.trim().isNotEmpty &&
+                serverUsername is String &&
+                serverUsername.trim().isNotEmpty) {
+              return GenericCameraQrPayload.addApp(
+                rawBytes,
+                serverAddr: serverAddr.trim(),
+                serverUsername: serverUsername.trim(),
+              );
             }
 
-            return GenericCameraQrPayload.addApp(
-              rawBytes,
-              serverAddr: serverAddr.trim(),
-              serverUsername: serverUsername.trim(),
-            );
+            return GenericCameraQrPayload.android(rawQrBytes: rawBytes);
           }
         } catch (_) {}
 
@@ -644,6 +690,20 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
         // if (type == 'ip' && cameraIp is String && cameraIp.isNotEmpty) {
         //   return GenericCameraQrPayload.ip(initialCameraIp: cameraIp);
         // }
+      }
+
+      final androidSecret = _stringFromAny(decoded, [
+        'secret',
+        'camera_secret',
+        'cameraSecret',
+      ]);
+
+      if (androidSecret != null) {
+        final rawBytes = _decodeCameraSecret(androidSecret);
+
+        if (rawBytes != null && rawBytes.isNotEmpty) {
+          return GenericCameraQrPayload.android(rawQrBytes: rawBytes);
+        }
       }
     }
 
