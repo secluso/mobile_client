@@ -64,7 +64,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.11.1';
 
   @override
-  int get rustContentHash => 920913443;
+  int get rustContentHash => -1340421508;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -87,19 +87,19 @@ abstract class RustLibApi extends BaseApi {
     required String serverAddr,
   });
 
-  Future<void> crateApiStartAndroidCameraHub({
-    required String workDir,
-    required String serverUsername,
-    required String serverPassword,
-    required String serverAddr,
-  });
-
   Future<void> crateApiSetAndroidCameraSettings({
     required int facing,
     required int width,
     required int height,
     required int frameRateMin,
     required int frameRateMax,
+  });
+
+  Future<void> crateApiStartAndroidCameraHub({
+    required String workDir,
+    required String serverUsername,
+    required String serverPassword,
+    required String serverAddr,
   });
 
   Future<void> crateApiStopAndroidCameraHub();
@@ -127,7 +127,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 4,
+            funcId: 1,
             port: port_,
           );
         },
@@ -166,7 +166,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 1,
+            funcId: 2,
             port: port_,
           );
         },
@@ -184,45 +184,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiResetAndroidCameraHubConstMeta =>
       const TaskConstMeta(
         debugName: "reset_android_camera_hub",
-        argNames: ["workDir", "serverUsername", "serverPassword", "serverAddr"],
-      );
-
-  @override
-  Future<void> crateApiStartAndroidCameraHub({
-    required String workDir,
-    required String serverUsername,
-    required String serverPassword,
-    required String serverAddr,
-  }) {
-    return handler.executeNormal(
-      NormalTask(
-        callFfi: (port_) {
-          final serializer = SseSerializer(generalizedFrbRustBinding);
-          sse_encode_String(workDir, serializer);
-          sse_encode_String(serverUsername, serializer);
-          sse_encode_String(serverPassword, serializer);
-          sse_encode_String(serverAddr, serializer);
-          pdeCallFfi(
-            generalizedFrbRustBinding,
-            serializer,
-            funcId: 2,
-            port: port_,
-          );
-        },
-        codec: SseCodec(
-          decodeSuccessData: sse_decode_unit,
-          decodeErrorData: sse_decode_String,
-        ),
-        constMeta: kCrateApiStartAndroidCameraHubConstMeta,
-        argValues: [workDir, serverUsername, serverPassword, serverAddr],
-        apiImpl: this,
-      ),
-    );
-  }
-
-  TaskConstMeta get kCrateApiStartAndroidCameraHubConstMeta =>
-      const TaskConstMeta(
-        debugName: "start_android_camera_hub",
         argNames: ["workDir", "serverUsername", "serverPassword", "serverAddr"],
       );
 
@@ -246,7 +207,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 3,
             port: port_,
           );
         },
@@ -264,13 +225,46 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSetAndroidCameraSettingsConstMeta =>
       const TaskConstMeta(
         debugName: "set_android_camera_settings",
-        argNames: [
-          "facing",
-          "width",
-          "height",
-          "frameRateMin",
-          "frameRateMax",
-        ],
+        argNames: ["facing", "width", "height", "frameRateMin", "frameRateMax"],
+      );
+
+  @override
+  Future<void> crateApiStartAndroidCameraHub({
+    required String workDir,
+    required String serverUsername,
+    required String serverPassword,
+    required String serverAddr,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_String(workDir, serializer);
+          sse_encode_String(serverUsername, serializer);
+          sse_encode_String(serverPassword, serializer);
+          sse_encode_String(serverAddr, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 4,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_unit,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiStartAndroidCameraHubConstMeta,
+        argValues: [workDir, serverUsername, serverPassword, serverAddr],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiStartAndroidCameraHubConstMeta =>
+      const TaskConstMeta(
+        debugName: "start_android_camera_hub",
+        argNames: ["workDir", "serverUsername", "serverPassword", "serverAddr"],
       );
 
   @override
@@ -282,7 +276,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 3,
+            funcId: 5,
             port: port_,
           );
         },
@@ -304,6 +298,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   String dco_decode_String(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw as String;
+  }
+
+  @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
   }
 
   @protected
@@ -332,6 +332,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
+  }
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var len_ = sse_decode_i_32(deserializer);
@@ -350,12 +356,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
-  }
-
-  @protected
   bool sse_decode_bool(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getUint8() != 0;
@@ -365,6 +365,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   void sse_encode_String(String self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_list_prim_u_8_strict(utf8.encoder.convert(self), serializer);
+  }
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
   }
 
   @protected
@@ -386,12 +392,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
   }
 
   @protected

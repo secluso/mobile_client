@@ -3,6 +3,7 @@
 import 'package:secluso_flutter/constants.dart';
 import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/notifications/download_task.dart';
+import 'package:secluso_flutter/notifications/epoch.dart';
 import 'package:secluso_flutter/notifications/notifications.dart';
 import 'package:secluso_flutter/notifications/thumbnails.dart';
 import 'package:secluso_flutter/utilities/camera_version_info.dart';
@@ -44,6 +45,58 @@ Future<bool> _cameraStillExists(
   return AppCoordinationState.containsCameraInSnapshotFresh(prefs, cameraName);
 }
 
+Future<void> _incrementCommonChannelEpochs(String cameraName) async {
+  final videoEpoch = await readEpoch(cameraName, 'video');
+  await writeEpoch(cameraName, 'video', videoEpoch + 1);
+
+  final thumbnailEpoch = await readEpoch(cameraName, 'thumbnail');
+  await writeEpoch(cameraName, 'thumbnail', thumbnailEpoch + 1);
+}
+
+Future<bool> processNewAppInfoNotification(String cameraName) async {
+  final configLock = "heartbeat$cameraName.lock";
+  if (!await lock(configLock)) {
+    Log.w("$cameraName: Config lock busy while processing new app info");
+    return false;
+  }
+
+  try {
+    final prefs = await SharedPreferences.getInstance();
+    if (!await _cameraStillExists(prefs, cameraName)) {
+      Log.d("$cameraName: Camera deleted before new app info processing");
+      return false;
+    }
+
+    final fetchResult = await HttpClientService.instance.fetchConfigResponse(
+      cameraName: cameraName,
+    );
+    if (fetchResult.isFailure) {
+      Log.w("$cameraName: Failed to fetch new app config response");
+      return false;
+    }
+
+    final result = await processHeartbeatConfigResponse(
+      cameraName: cameraName,
+      configResponse: fetchResult.value!,
+      // This value is ignored when processing an add_app config response.
+      expectedTimestamp: BigInt.zero,
+    );
+    if (!result.contains("add_app")) {
+      Log.w("$cameraName: Unexpected config response for new app info");
+      return false;
+    }
+
+    await _incrementCommonChannelEpochs(cameraName);
+    Log.d("$cameraName: Processed new app config response");
+    return true;
+  } catch (e, st) {
+    Log.e("$cameraName: Failed to process new app config response: $e\n$st");
+    return false;
+  } finally {
+    await unlock(configLock);
+  }
+}
+
 Future<bool> _doHeartbeatTask(String cameraName) async {
   Log.d("$cameraName: Starting to work (heartbeat)");
   final cameraHeartbeatLock = "heartbeat$cameraName.lock";
@@ -60,7 +113,7 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
       }
       final timestampInt = DateTime.now().millisecondsSinceEpoch ~/ 1000;
       final timestamp = BigInt.from(timestampInt);
-      var successful = false;
+      var receivedHeartbeat = false;
       var downloaded = false;
       var networkError = false;
       Log.d("$cameraName: Heartbeat timestamp = $timestamp");
@@ -90,7 +143,7 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
 
       await res.fold(
         (_) async {
-          for (int i = 0; i < 30 && !successful; i++) {
+          for (int i = 0; i < 30 && !receivedHeartbeat; i++) {
             if (!await _cameraStillExists(prefs, cameraName)) {
               Log.d(
                 "$cameraName: Camera deleted during heartbeat retries; aborting.",
@@ -120,6 +173,7 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
 
             final fetchRes = await HttpClientService.instance
                 .fetchConfigResponse(cameraName: cameraName);
+            var receivedAddApp = false;
             await fetchRes.fold(
               (configResponse) async {
                 if (!await _cameraStillExists(prefs, cameraName)) {
@@ -134,6 +188,15 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                   expectedTimestamp: timestamp,
                 );
                 Log.d("$cameraName: heartbeatResult = $heartbeatResult");
+                if (heartbeatResult.contains("add_app")) {
+                  Log.d(
+                    "$cameraName: Received and processed a new add_app commit",
+                  );
+                  await _incrementCommonChannelEpochs(cameraName);
+                  receivedAddApp = true;
+                  return;
+                }
+
                 final heartbeatStatus = HeartbeatStatus.fromJsonString(
                   heartbeatResult,
                 );
@@ -157,12 +220,13 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                   );
                   final versionInfo = heartbeatStatus.versionInfo;
                   if (versionInfo != null) {
-                    final currentFirmware =
-                        prefs.getString(
-                          PrefKeys.firmwareVersionPrefix + cameraName,
-                        ) ??
-                        "";
-                    if (currentFirmware != versionInfo.firmwareVersion) {
+                    final currentFirmware = prefs.getString(
+                      PrefKeys.firmwareVersionPrefix + cameraName,
+                    );
+                    if (shouldNotifyFirmwareUpdate(
+                      currentFirmware,
+                      versionInfo.firmwareVersion,
+                    )) {
                       showCameraStatusNotification(
                         cameraName: cameraName,
                         msg:
@@ -272,7 +336,7 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                   }
                 }
 
-                successful = true;
+                receivedHeartbeat = true;
               },
               (err) async {
                 Log.d(
@@ -284,10 +348,15 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                 }
               },
             );
+
+            if (receivedAddApp) {
+              continue;
+            }
           }
 
-          if (downloaded && !successful && !networkError) {
-            // We get here if we could not successfully fetch the response in all the attempts in the loop
+          if (downloaded && !receivedHeartbeat && !networkError) {
+            // We get here if we could not fetch a heartbeat response in all the attempts in the loop.
+            // An add_app config response does not count as a heartbeat response.
             // If we delete the camera while heartbeat is taking place, we could end up
             // here after the camera is deleted. So we check that here.
             if (await _cameraStillExists(prefs, cameraName)) {
@@ -330,7 +399,7 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
         },
       );
 
-      return successful;
+      return receivedHeartbeat;
     } finally {
       await unlock(cameraHeartbeatLock);
     }
