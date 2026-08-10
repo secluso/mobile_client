@@ -168,6 +168,22 @@ Future<Uint8List> processAddAppConfigResponse({
   secret: secret,
 );
 
+Future<Uint8List> generateRemoveAppRequestConfigCommand({
+  required String cameraName,
+  required String appName,
+}) => raw.generateRemoveAppRequestConfigCommand(
+  cameraName: _cameraNameWithTrace(cameraName),
+  appName: appName,
+);
+
+Future<bool> processRemoveAppConfigResponse({
+  required String cameraName,
+  required List<int> configResponse,
+}) => raw.processRemoveAppConfigResponse(
+  cameraName: _cameraNameWithTrace(cameraName),
+  configResponse: configResponse,
+);
+
 Future<frb.Uint64List> joinCameraGroups({
   required String cameraName,
   required List<int> secret,

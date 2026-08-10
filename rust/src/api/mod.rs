@@ -823,7 +823,19 @@ pub fn process_add_app_config_response(
         config_response,
         secret,
     ) {
-        Ok(new_app_data_vec) => new_app_data_vec,
+        Ok((new_app_data_vec, app_name)) => {
+            let name_bytes = app_name.as_bytes();
+            let Ok(name_len) = u16::try_from(name_bytes.len()) else {
+                info!("process_add_app_config_response error: app name too long");
+                return vec![];
+            };
+            let mut processed_resp =
+                Vec::with_capacity(2 + name_bytes.len() + new_app_data_vec.len());
+            processed_resp.extend(name_len.to_be_bytes());
+            processed_resp.extend(name_bytes);
+            processed_resp.extend(new_app_data_vec);
+            processed_resp
+        }
         Err(e) => {
             info!("process_add_app_config_response error: {}", e);
             vec![]
@@ -831,6 +843,80 @@ pub fn process_add_app_config_response(
     };
 
     ret
+}
+
+#[flutter_rust_bridge::frb]
+pub fn generate_remove_app_request_config_command(
+    camera_name: String,
+    app_name: String,
+) -> Vec<u8> {
+    let (camera_name, trace_id) = split_trace_camera(&camera_name);
+    let _trace_guard = logger::set_log_trace(trace_id);
+    let channel = CHANNEL_FIXED;
+    let client_mutex = get_or_create_channel_mutex(&camera_name, channel);
+    let op = "generate_remove_app_request_config_command(config)".to_string();
+    let mut client_guard = lock_client_or_return!(
+        client_mutex,
+        &camera_name,
+        channel,
+        &op,
+        trace_id,
+        vec![]
+    );
+    if !ensure_client_initialized(&mut *client_guard, &camera_name, channel) {
+        return vec![];
+    }
+    if app_name.is_empty() || app_name.len() > 4096 {
+        info!(
+            "generate_remove_app_request_config_command error: invalid app name"
+        );
+        return vec![];
+    }
+
+    match secluso_app_native::generate_remove_app_request_config_command(
+        &mut *client_guard,
+        &app_name,
+    ) {
+        Ok(config_msg_enc) => config_msg_enc,
+        Err(e) => {
+            info!("generate_remove_app_request_config_command error: {}", e);
+            vec![]
+        }
+    }
+}
+
+#[flutter_rust_bridge::frb]
+pub fn process_remove_app_config_response(
+    camera_name: String,
+    config_response: Vec<u8>,
+) -> bool {
+    let (camera_name, trace_id) = split_trace_camera(&camera_name);
+    let _trace_guard = logger::set_log_trace(trace_id);
+    let channel = CHANNEL_FIXED;
+    let client_mutex = get_or_create_channel_mutex(&camera_name, channel);
+    let op = "process_remove_app_config_response(config)".to_string();
+    let mut client_guard = lock_client_or_return!(
+        client_mutex,
+        &camera_name,
+        channel,
+        &op,
+        trace_id,
+        false
+    );
+    if !ensure_client_initialized(&mut *client_guard, &camera_name, channel) {
+        return false;
+    }
+
+    match secluso_app_native::process_remove_app_config_response(
+        &mut *client_guard,
+        config_response,
+    ) {
+        Ok(()) => true,
+        Err(e) => {
+            info!("process_remove_app_config_response error: {}", e);
+            false
+        }
+    }
 }
 
 #[flutter_rust_bridge::frb]
@@ -861,7 +947,7 @@ pub fn join_camera_groups(
         secret,
         new_app_data_vec,
     ) {
-        Ok(epochs) => epochs.to_vec(),
+        Ok((epochs, _app_name)) => epochs.to_vec(),
         Err(e) => {
             info!("join_camera_groups error: {}", e);
             vec![]

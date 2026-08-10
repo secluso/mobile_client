@@ -12,6 +12,7 @@ import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/notifications/notification_permissions.dart';
 import 'package:secluso_flutter/routes/camera/list_cameras.dart';
 import 'package:secluso_flutter/utilities/app_coordination_state.dart';
+import 'package:secluso_flutter/utilities/connected_apps.dart';
 import 'package:secluso_flutter/constants.dart';
 import 'package:secluso_flutter/routes/camera/camera_ui_bridge.dart';
 
@@ -130,10 +131,11 @@ class AddAppFlow {
                               );
                             }
 
+                            final addAppResp = decodeAddAppResp(newAppDataVec);
                             final epochs = await joinCameraGroups(
                               cameraName: cameraName,
                               secret: addAppSecret,
-                              newAppDataVec: newAppDataVec,
+                              newAppDataVec: addAppResp.payload,
                             );
 
                             if (epochs.length < 2) {
@@ -151,7 +153,10 @@ class AddAppFlow {
                               epochs[1].toInt() + 1,
                             );
 
-                            await _persistAddedCamera(cameraName);
+                            await _persistAddedCamera(
+                              cameraName,
+                              addAppResp.appName,
+                            );
 
                             CameraUiBridge.switchShellTabCallback?.call(0);
 
@@ -177,7 +182,10 @@ class AddAppFlow {
     return result;
   }
 
-  static Future<void> _persistAddedCamera(String cameraName) async {
+  static Future<void> _persistAddedCamera(
+    String cameraName,
+    String ownAppName,
+  ) async {
     final prefs = await SharedPreferences.getInstance();
 
     await prefs.setBool("first_time_$cameraName", true);
@@ -186,6 +194,7 @@ class AddAppFlow {
         PrefKeys.cameraAddedViaAddAppPrefix + cameraName,
         true,
     );
+    await prefs.setString(PrefKeys.ownAppNamePrefix + cameraName, ownAppName);
 
     final existingCameraSet = await AppCoordinationState.getCameraSet();
     final wasFirstCamera = existingCameraSet.isEmpty;

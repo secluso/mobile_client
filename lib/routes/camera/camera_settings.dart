@@ -15,6 +15,8 @@ import 'package:secluso_flutter/notifications/epoch.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:secluso_flutter/constants.dart';
+import 'package:secluso_flutter/utilities/connected_apps.dart';
+import 'package:secluso_flutter/utilities/lock.dart';
 
 enum CameraSettingsAction { removeCamera }
 
@@ -241,6 +243,9 @@ class _SettingsPageState extends State<SettingsPage> {
       return;
     }
 
+    final displayName = await _promptForPhoneName();
+    if (displayName == null || !mounted) return;
+
     final qrData = await getAddAppSecret();
     final augmentedQrData = await _buildAugmentedQrData(qrData);
 
@@ -269,7 +274,7 @@ class _SettingsPageState extends State<SettingsPage> {
             String? error;
 
             try {
-              await _handleAddApp(addAppSecret);
+              await _handleAddApp(addAppSecret, displayName);
             } catch (e) {
               error = e.toString();
             }
@@ -321,6 +326,58 @@ class _SettingsPageState extends State<SettingsPage> {
     );
   }
 
+  Future<String?> _promptForPhoneName() async {
+    final controller = TextEditingController();
+    String? error;
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Name the new phone'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            maxLength: maxConnectedAppDisplayNameLength,
+            textInputAction: TextInputAction.done,
+            decoration: InputDecoration(
+              hintText: 'For example, green phone',
+              errorText: error,
+            ),
+            onSubmitted: (_) {
+              try {
+                Navigator.of(ctx).pop(
+                  validateConnectedAppDisplayName(controller.text),
+                );
+              } on FormatException catch (e) {
+                setDialogState(() => error = e.message);
+              }
+            },
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                try {
+                  Navigator.of(ctx).pop(
+                    validateConnectedAppDisplayName(controller.text),
+                  );
+                } on FormatException catch (e) {
+                  setDialogState(() => error = e.message);
+                }
+              },
+              child: const Text('Continue'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
   Uint8List decodeAddAppSecret(String qrData) {
     dynamic decoded;
     try {
@@ -350,7 +407,25 @@ class _SettingsPageState extends State<SettingsPage> {
     throw FormatException('Could not decide add-phone secret');
   }
 
-  Future<void> _handleAddApp(Uint8List addAppSecret) async {
+  Future<void> _handleAddApp(
+    Uint8List addAppSecret,
+    String displayName,
+  ) async {
+    final configLock = 'heartbeat${widget.cameraName}.lock';
+    if (!await lock(configLock)) {
+      throw Exception('Camera configuration is busy. Try again.');
+    }
+    try {
+      await _handleAddAppLocked(addAppSecret, displayName);
+    } finally {
+      await unlock(configLock);
+    }
+  }
+
+  Future<void> _handleAddAppLocked(
+    Uint8List addAppSecret,
+    String displayName,
+  ) async {
     final httpClient = HttpClientService.instance;
 
     final newAppKeyPackagesResult =
@@ -408,15 +483,16 @@ class _SettingsPageState extends State<SettingsPage> {
       );
     }
 
-    final newAppDataVec = await processAddAppConfigResponse(
+    final processedResp = await processAddAppConfigResponse(
       cameraName: widget.cameraName,
       configResponse: configResponse,
       secret: addAppSecret,
     );
 
-    if (newAppDataVec.isEmpty) {
+    if (processedResp.isEmpty) {
       throw Exception('failed to process the camera add-phone response');
     }
+    final newApp = decodeAddAppResp(processedResp);
 
     final videoEpoch = await readEpoch(widget.cameraName, 'video');
     await writeEpoch(widget.cameraName, 'video', videoEpoch + 1);
@@ -425,13 +501,111 @@ class _SettingsPageState extends State<SettingsPage> {
     await writeEpoch(widget.cameraName, 'thumbnail', thumbnailEpoch + 1);
 
     final addAppRequestResult =
-        await httpClient.sendMsg("add_app_finish", newAppDataVec);
+        await httpClient.sendMsg("add_app_finish", processedResp);
 
     if (addAppRequestResult.isFailure) {
       throw Exception(
         'failed to send add-phone response: ${addAppRequestResult.error}',
       );
     }
+    await saveConnectedApp(
+      widget.cameraName,
+      ConnectedApp(appName: newApp.appName, displayName: displayName),
+    );
+  }
+
+  Future<bool> _isSecondaryApp() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(
+          PrefKeys.cameraAddedViaAddAppPrefix + widget.cameraName,
+        ) ??
+        false;
+  }
+
+  Future<void> _manageConnectedPhones() async {
+    if (await _isSecondaryApp()) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Managing connected phones is only available on the primary phone.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => _ConnectedPhonesDialog(
+        cameraName: widget.cameraName,
+        onRemove: _removeConnectedPhone,
+      ),
+    );
+  }
+
+  Future<void> _removeConnectedPhone(ConnectedApp app) async {
+    if (await _isSecondaryApp()) {
+      throw Exception('Only the primary phone can remove connected phones.');
+    }
+    final configLock = 'heartbeat${widget.cameraName}.lock';
+    if (!await lock(configLock)) {
+      throw Exception('Camera configuration is busy. Try again.');
+    }
+    try {
+      await _removeConnectedPhoneLocked(app);
+    } finally {
+      await unlock(configLock);
+    }
+  }
+
+  Future<void> _removeConnectedPhoneLocked(ConnectedApp app) async {
+    final knownApps = await loadConnectedApps(widget.cameraName);
+    if (!knownApps.any((known) => known.appName == app.appName)) {
+      throw Exception('This phone is no longer in the connected list.');
+    }
+    final command = await generateRemoveAppRequestConfigCommand(
+      cameraName: widget.cameraName,
+      appName: app.appName,
+    );
+    if (command.isEmpty) throw Exception('Could not generate remove command.');
+    final client = HttpClientService.instance;
+    final sent = await client.configCommand(
+      cameraName: widget.cameraName,
+      command: command,
+    );
+    if (sent.isFailure) throw Exception('Could not send remove command.');
+
+    Uint8List? response;
+    for (var attempt = 0; attempt < 30; attempt++) {
+      await Future<void>.delayed(const Duration(seconds: 2));
+      final fetched = await client.fetchConfigResponse(
+        cameraName: widget.cameraName,
+      );
+      if (fetched.isSuccess) {
+        response = fetched.value;
+        break;
+      }
+    }
+    if (response == null) {
+      throw Exception('Camera did not confirm removal.');
+    }
+    final processed = await processRemoveAppConfigResponse(
+      cameraName: widget.cameraName,
+      configResponse: response,
+    );
+    if (!processed) {
+      throw Exception('Could not verify the camera removal response.');
+    }
+    await _incrementEpochs();
+    await removeConnectedApp(widget.cameraName, app.appName);
+  }
+
+  Future<void> _incrementEpochs() async {
+    final videoEpoch = await readEpoch(widget.cameraName, 'video');
+    await writeEpoch(widget.cameraName, 'video', videoEpoch + 1);
+    final thumbnailEpoch = await readEpoch(widget.cameraName, 'thumbnail');
+    await writeEpoch(widget.cameraName, 'thumbnail', thumbnailEpoch + 1);
   }
 
   @override
@@ -749,6 +923,14 @@ class _SettingsPageState extends State<SettingsPage> {
                     titleStyle: rowTitleStyle,
                   ),
                   ShellSettingsRow(
+                    title: 'Manage connected phones',
+                    onTap: _manageConnectedPhones,
+                    trailing: const Icon(Icons.chevron_right),
+                    height: metrics.advancedBottomRowHeight,
+                    horizontalPadding: metrics.rowHorizontalPadding,
+                    titleStyle: rowTitleStyle,
+                  ),
+                  ShellSettingsRow(
                     title: 'Remove Camera',
                     onTap: _confirmRemoveCamera,
                     trailing: const SizedBox.shrink(),
@@ -814,6 +996,135 @@ class _SettingsPageState extends State<SettingsPage> {
               ],
             ),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ConnectedPhonesDialog extends StatefulWidget {
+  const _ConnectedPhonesDialog({
+    required this.cameraName,
+    required this.onRemove,
+  });
+
+  final String cameraName;
+  final Future<void> Function(ConnectedApp app) onRemove;
+
+  @override
+  State<_ConnectedPhonesDialog> createState() => _ConnectedPhonesDialogState();
+}
+
+class _ConnectedPhonesDialogState extends State<_ConnectedPhonesDialog> {
+  late Future<List<ConnectedApp>> _apps;
+  String? _removingAppName;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _apps = loadConnectedApps(widget.cameraName);
+  }
+
+  Future<void> _remove(ConnectedApp app) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Remove ${app.displayName}?'),
+        content: const Text(
+          'This phone will stop receiving updates from this camera.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Remove', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() {
+      _removingAppName = app.appName;
+      _error = null;
+    });
+    try {
+      await widget.onRemove(app);
+      if (!mounted) return;
+      setState(() {
+        _removingAppName = null;
+        _apps = loadConnectedApps(widget.cameraName);
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _removingAppName = null;
+        _error = e.toString();
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Connected phones'),
+      content: SizedBox(
+        width: 360,
+        child: FutureBuilder<List<ConnectedApp>>(
+          future: _apps,
+          builder: (context, snapshot) {
+            if (!snapshot.hasData) {
+              return const Center(child: CircularProgressIndicator());
+            }
+            final apps = snapshot.data!;
+            if (apps.isEmpty) {
+              return const Text('No secondary phones are connected.');
+            }
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (_error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: Theme.of(context).colorScheme.error),
+                    ),
+                  ),
+                for (final app in apps)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(app.displayName),
+                    trailing:
+                        _removingAppName == app.appName
+                            ? const SizedBox.square(
+                              dimension: 24,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                            : IconButton(
+                              tooltip: 'Remove phone',
+                              onPressed:
+                                  _removingAppName == null
+                                      ? () => _remove(app)
+                                      : null,
+                              icon: const Icon(Icons.delete_outline),
+                            ),
+                  ),
+              ],
+            );
+          },
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed:
+              _removingAppName == null
+                  ? () => Navigator.of(context).pop()
+                  : null,
+          child: const Text('Close'),
         ),
       ],
     );

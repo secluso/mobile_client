@@ -9,6 +9,7 @@ import 'package:secluso_flutter/notifications/thumbnails.dart';
 import 'package:secluso_flutter/utilities/camera_version_info.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
+import 'package:secluso_flutter/utilities/rust_util.dart';
 import 'package:secluso_flutter/utilities/lock.dart';
 import 'package:secluso_flutter/src/rust/frb_generated.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
@@ -53,6 +54,61 @@ Future<void> _incrementCommonChannelEpochs(String cameraName) async {
   await writeEpoch(cameraName, 'thumbnail', thumbnailEpoch + 1);
 }
 
+Future<bool> _handleMembershipResult(
+  String cameraName,
+  String result,
+) async {
+  if (result == 'add_app') {
+    await _incrementCommonChannelEpochs(cameraName);
+    return false;
+  }
+  if (!result.startsWith('remove_app')) return false;
+
+  final removedAppName = result.substring('remove_app'.length);
+  if (removedAppName.isEmpty) {
+    throw const FormatException('Missing removed app name');
+  }
+  final prefs = await SharedPreferences.getInstance();
+  final ownAppName = prefs.getString(PrefKeys.ownAppNamePrefix + cameraName);
+  if (ownAppName == null || ownAppName != removedAppName) {
+    await _incrementCommonChannelEpochs(cameraName);
+    return false;
+  }
+  if (prefs.getBool(PrefKeys.cameraArchivedPrefix + cameraName) == true) {
+    return true;
+  }
+
+  final client = HttpClientService.instance;
+  final livestreamGroup = await getGroupName(
+    clientTag: Group.livestream,
+    cameraName: cameraName,
+  );
+  final configGroup = await getGroupName(
+    clientTag: Group.config,
+    cameraName: cameraName,
+  );
+  for (final group in [livestreamGroup, configGroup]) {
+    final result = await client.deregisterGroup(group);
+    if (result.isFailure) {
+      Log.w('$cameraName: Failed to remove an archived server group');
+    }
+  }
+
+  await prefs.setBool(PrefKeys.cameraArchivedPrefix + cameraName, true);
+  await AppCoordinationState.removeCamera(cameraName);
+  await AppCoordinationState.removeCameraFromDownloadQueues(cameraName);
+  await deregisterCamera(cameraName: cameraName);
+  invalidateCameraInit(cameraName);
+  client.clearGroupNameCache(cameraName);
+  try {
+    await showCameraArchivedNotification(cameraName: cameraName);
+  } catch (e, st) {
+    Log.e('$cameraName: Failed to show archived-camera notification: $e\n$st');
+  }
+  Log.d('$cameraName: Camera archived after this app was removed');
+  return true;
+}
+
 Future<bool> processNewAppInfoNotification(String cameraName) async {
   final configLock = "heartbeat$cameraName.lock";
   if (!await lock(configLock)) {
@@ -81,13 +137,13 @@ Future<bool> processNewAppInfoNotification(String cameraName) async {
       // This value is ignored when processing an add_app config response.
       expectedTimestamp: BigInt.zero,
     );
-    if (!result.contains("add_app")) {
-      Log.w("$cameraName: Unexpected config response for new app info");
+    if (result != 'add_app' && !result.startsWith('remove_app')) {
+      Log.w("$cameraName: Unexpected membership config response");
       return false;
     }
 
-    await _incrementCommonChannelEpochs(cameraName);
-    Log.d("$cameraName: Processed new app config response");
+    await _handleMembershipResult(cameraName, result);
+    Log.d("$cameraName: Processed membership config response");
     return true;
   } catch (e, st) {
     Log.e("$cameraName: Failed to process new app config response: $e\n$st");
@@ -188,12 +244,17 @@ Future<bool> _doHeartbeatTask(String cameraName) async {
                   expectedTimestamp: timestamp,
                 );
                 Log.d("$cameraName: heartbeatResult = $heartbeatResult");
-                if (heartbeatResult.contains("add_app")) {
+                if (heartbeatResult == 'add_app' ||
+                    heartbeatResult.startsWith('remove_app')) {
                   Log.d(
-                    "$cameraName: Received and processed a new add_app commit",
+                    "$cameraName: Received and processed a membership commit",
                   );
-                  await _incrementCommonChannelEpochs(cameraName);
+                  final archived = await _handleMembershipResult(
+                    cameraName,
+                    heartbeatResult,
+                  );
                   receivedAddApp = true;
+                  if (archived) receivedHeartbeat = true;
                   return;
                 }
 

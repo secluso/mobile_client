@@ -163,6 +163,22 @@ Future<Uint8List> processAddAppConfigResponse({
   secret: secret,
 );
 
+Future<Uint8List> generateRemoveAppRequestConfigCommand({
+  required String cameraName,
+  required String appName,
+}) => RustLib.instance.api.crateApiGenerateRemoveAppRequestConfigCommand(
+  cameraName: cameraName,
+  appName: appName,
+);
+
+Future<bool> processRemoveAppConfigResponse({
+  required String cameraName,
+  required List<int> configResponse,
+}) => RustLib.instance.api.crateApiProcessRemoveAppConfigResponse(
+  cameraName: cameraName,
+  configResponse: configResponse,
+);
+
 Future<Uint64List> joinCameraGroups({
   required String cameraName,
   required List<int> secret,
