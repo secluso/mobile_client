@@ -818,6 +818,11 @@ Future<void> _checkServerVersion() async {
     if (serverVersionResult.isFailure) {
       Log.w("Failed to fetch server version: ${serverVersionResult.error}");
 
+      if (VersionGate.isBlocked) {
+        _cancelVersionCheckRetry();
+        return;
+      }
+
       // Require client to upgrade (or downgrade) their app to go further. Block screen.
       _scheduleVersionCheckRetry();
       return;

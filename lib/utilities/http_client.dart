@@ -649,8 +649,7 @@ class HttpClientService {
     final headers = await _basicAuthHeaders(creds.username, creds.password);
     headers['X-Command-Size'] = command.length.toString();
 
-    final response = await http
-        .post(url, headers: headers, body: command);
+    final response = await http.post(url, headers: headers, body: command);
 
     await _handleServerVersionHeader(response);
 
@@ -761,14 +760,31 @@ class HttpClientService {
     }
   }
 
-  bool _isNetworkException(Object e) {
-    if (e is SocketException) {
+  bool _isNetworkException(Object e) => isTransientNetworkError(e);
+
+  /// Returns true if error is a transient transport-level network failure that is safe to retry.
+  ///
+  /// Match primarily on the message text rather than the exception type.
+  /// Http package wraps low-level SocketExceptions in a http.ClientException
+  /// _wrap re-wraps everything again as a plain Exception(e.toString())
+  static bool isTransientNetworkError(Object? error) {
+    if (error == null) {
+      return false;
+    }
+    if (error is SocketException || error is http.ClientException) {
       return true;
     }
-    if (e is http.ClientException && e.message.contains('SocketException')) {
-      return true;
-    }
-    return false;
+    final message = error.toString().toLowerCase();
+    return message.contains('socketexception') ||
+        message.contains('clientexception') ||
+        message.contains('network is unreachable') ||
+        message.contains('failed host lookup') ||
+        message.contains('connection refused') ||
+        message.contains('connection reset') ||
+        message.contains('connection closed') ||
+        message.contains('connection abort') ||
+        message.contains('broken pipe') ||
+        message.contains('timed out');
   }
 
   Future<void> _ensureVersionCompatible() async {
@@ -844,6 +860,7 @@ class HttpClientService {
 
     final url = _buildUrl(creds.serverAddr, ['status']);
     final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final clientVersion = await _versionFuture;
 
     final response = await _cappedGetResponse(
       url,
@@ -859,10 +876,39 @@ class HttpClientService {
     // Check the X-Server-Version response header.
     final serverVersion = response.headers['x-server-version'];
     if (serverVersion == null || serverVersion.isEmpty) {
-      throw Exception('Missing X-Server-Version header in response');
+      if (response.statusCode == 409) {
+        Log.w(
+          'Server rejected client version but did not include X-Server-Version '
+          '(clientVersion=$clientVersion, status=${response.statusCode}, '
+          'body=${_summarizeResponseBody(response.body)})',
+        );
+        _versionMatchConfirmed = false;
+        VersionGate.block(
+          VersionGateInfo.mismatch(
+            serverVersion: 'unknown',
+            clientVersion: clientVersion,
+          ),
+        );
+        await potentiallySendBackgroundNotification();
+        throw SilentException(
+          'Server rejected client version without X-Server-Version header',
+        );
+      }
+      throw SilentException(
+        'Missing X-Server-Version header in response '
+        '(status=${response.statusCode}, body=${_summarizeResponseBody(response.body)})',
+      );
     }
 
     return serverVersion;
+  }
+
+  String _summarizeResponseBody(String body) {
+    final compact = body.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (compact.length <= 180) {
+      return compact;
+    }
+    return '${compact.substring(0, 180)}...';
   }
 
   Future<String?> _pref(String key) async {
