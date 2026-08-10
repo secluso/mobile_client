@@ -114,6 +114,7 @@ Future<void> _doInitLocalNotifications() async {
   if (Platform.isAndroid) {
     await _ensureMotionChannelAndroid();
     await _ensureSupportChannelAndroid();
+    await _ensureCameraAccessChannelAndroid();
   }
   _notificationsInitialized = true;
 }
@@ -285,6 +286,21 @@ Future<void> _ensureSupportChannelAndroid() async {
       ?.createNotificationChannel(channel);
 }
 
+Future<void> _ensureCameraAccessChannelAndroid() async {
+  const channel = AndroidNotificationChannel(
+    'camera_access_channel',
+    'Camera Access',
+    description: 'Changes to this phone’s access to the security camera',
+    importance: Importance.high,
+  );
+
+  await _notifs
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >()
+      ?.createNotificationChannel(channel);
+}
+
 String _formatTimestamp(String unixSeconds) {
   final secs = int.tryParse(unixSeconds) ?? 0;
   final date =
@@ -328,6 +344,43 @@ Future<void> showCameraStatusNotification({
     title: cameraName, // title
     body: msg, // body
     notificationDetails: details,
+  );
+}
+
+Future<void> showCameraArchivedNotification({
+  required String cameraName,
+}) async {
+  await initLocalNotifications();
+
+  final androidDetails = AndroidNotificationDetails(
+    'camera_access_channel',
+    'Camera Access',
+    channelDescription: 'Changes to this phone’s camera access',
+    importance: Importance.high,
+    priority: Priority.high,
+    icon: 'ic_notification',
+    vibrationPattern: Int64List.fromList([200, 200, 200]),
+    enableLights: true,
+    color: const Color(0xFF8BB3EE),
+    ledColor: const Color(0xFF8BB3EE),
+    ledOnMs: 1000,
+    ledOffMs: 1000,
+  );
+  const iosDetails = DarwinNotificationDetails(
+    interruptionLevel: InterruptionLevel.timeSensitive,
+    sound: 'default',
+    badgeNumber: 1,
+  );
+
+  await _notifs.show(
+    id: DateTime.now().millisecondsSinceEpoch ~/ 1000,
+    title: 'Access to ${cameraName} camera removed',
+    body:
+        'The main phone discontinued this phone from receiving new videos.',
+    notificationDetails: NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    ),
   );
 }
 

@@ -20,6 +20,7 @@ const String _seclusoLogoArtPath = 'assets/design/secluso_logo.jpg';
 class ShellHomeCamera {
   const ShellHomeCamera({
     required this.name,
+    this.displayName,
     required this.previewAssetPath,
     this.thumbnailBytes,
     this.hasUnreadActivity = false,
@@ -40,6 +41,7 @@ class ShellHomeCamera {
   });
 
   final String name;
+  final String? displayName;
   final String? previewAssetPath;
   final Uint8List? thumbnailBytes;
   final bool hasUnreadActivity;
@@ -446,7 +448,7 @@ class ShellHomePage extends StatelessWidget {
       items.add(
         _ShellRecentEvent(
           title: camera.recentActivityTitle ?? _fallbackActivityTitle(camera),
-          subtitle: camera.name,
+          subtitle: camera.displayName ?? camera.name,
           timeLabel:
               camera.recentActivityTimeLabel ??
               (camera.statusLabel?.contains('14m') == true
@@ -680,7 +682,7 @@ class _FirstCameraAwaitingEventCard extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Text(
-                          camera.name,
+                          camera.displayName ?? camera.name,
                           style: GoogleFonts.inter(
                             color: Colors.white.withValues(alpha: 0.96),
                             fontSize: metrics.scaled(14),
@@ -1386,7 +1388,7 @@ class _FeaturedCameraCard extends StatelessWidget {
                           ),
                           const Spacer(),
                           Text(
-                            camera.name,
+                            camera.displayName ?? camera.name,
                             style: Theme.of(
                               context,
                             ).textTheme.titleLarge?.copyWith(
@@ -1554,7 +1556,7 @@ class _SmallCameraTile extends StatelessWidget {
                       ),
                       const Spacer(),
                       Text(
-                        camera.name,
+                        camera.displayName ?? camera.name,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
                           color: Colors.white,
                           fontSize: metrics.smallTitleSize,
@@ -1739,7 +1741,7 @@ class _CameraNoImagePlaceholder extends StatelessWidget {
                 ],
               ),
               const Spacer(),
-              Text(camera.name, style: nameStyle),
+              Text(camera.displayName ?? camera.name, style: nameStyle),
               SizedBox(height: metrics.scaled(featured ? 3 : 3.5)),
               Row(
                 children: [

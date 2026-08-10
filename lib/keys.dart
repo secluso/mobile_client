@@ -46,6 +46,9 @@ class PrefKeys {
       "camera_notifications_enabled_";
   static const cameraNotificationEventsPrefix = "camera_notification_events_";
   static const cameraAddedViaAddAppPrefix = "camera_added_via_add_app_";
+  static const connectedAppsPrefix = "connected_apps_";
+  static const ownAppNamePrefix = "own_app_name_";
+  static const cameraArchivedPrefix = "camera_archived_";
   static const reviewEnvironmentJson = "review_environment_json";
   static const unifiedPushDistributor = 'unified_push_distributor';
   static const unifiedPushEndpointUrl = 'unified_push_endpoint_url';

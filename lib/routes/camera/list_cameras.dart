@@ -1089,6 +1089,10 @@ class CamerasPageState extends State<CamerasPage>
 
       all.add({
         "name": camera.name,
+        "displayName":
+            prefs.getBool(PrefKeys.cameraArchivedPrefix + camera.name) == true
+                ? '${camera.name} (Archived)'
+                : camera.name,
         "icon": Icons.videocam,
         "unreadMessages": camera.unreadMessages,
         "statusLabel": _statusLabelForCamera(
@@ -1769,6 +1773,7 @@ class CamerasPageState extends State<CamerasPage>
               .map(
                 (camera) => ShellHomeCamera(
                   name: camera['name'] as String,
+                  displayName: camera['displayName'] as String?,
                   previewAssetPath: camera['previewAsset'] as String?,
                   thumbnailBytes: camera['thumbnailBytes'] as Uint8List?,
                   hasUnreadActivity: camera['unreadMessages'] as bool? ?? false,

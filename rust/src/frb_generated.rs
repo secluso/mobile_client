@@ -42,7 +42,7 @@ flutter_rust_bridge::frb_generated_boilerplate!(
     default_rust_auto_opaque = RustAutoOpaqueMoi,
 );
 pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_VERSION: &str = "2.11.1";
-pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1139900320;
+pub(crate) const FLUTTER_RUST_BRIDGE_CODEGEN_CONTENT_HASH: i32 = 1084535613;
 
 // Section: executor
 
@@ -506,6 +506,45 @@ fn wire__crate__api__generate_heartbeat_request_config_command_impl(
                         crate::api::generate_heartbeat_request_config_command(
                             api_camera_name,
                             api_timestamp,
+                        ),
+                    )?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
+fn wire__crate__api__generate_remove_app_request_config_command_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "generate_remove_app_request_config_command",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_camera_name = <String>::sse_decode(&mut deserializer);
+            let api_app_name = <String>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok = Result::<_, ()>::Ok(
+                        crate::api::generate_remove_app_request_config_command(
+                            api_camera_name,
+                            api_app_name,
                         ),
                     )?;
                     Ok(output_ok)
@@ -1016,6 +1055,44 @@ fn wire__crate__api__process_heartbeat_config_response_impl(
         },
     )
 }
+fn wire__crate__api__process_remove_app_config_response_impl(
+    port_: flutter_rust_bridge::for_generated::MessagePort,
+    ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
+    rust_vec_len_: i32,
+    data_len_: i32,
+) {
+    FLUTTER_RUST_BRIDGE_HANDLER.wrap_normal::<flutter_rust_bridge::for_generated::SseCodec, _, _>(
+        flutter_rust_bridge::for_generated::TaskInfo {
+            debug_name: "process_remove_app_config_response",
+            port: Some(port_),
+            mode: flutter_rust_bridge::for_generated::FfiCallMode::Normal,
+        },
+        move || {
+            let message = unsafe {
+                flutter_rust_bridge::for_generated::Dart2RustMessageSse::from_wire(
+                    ptr_,
+                    rust_vec_len_,
+                    data_len_,
+                )
+            };
+            let mut deserializer =
+                flutter_rust_bridge::for_generated::SseDeserializer::new(message);
+            let api_camera_name = <String>::sse_decode(&mut deserializer);
+            let api_config_response = <Vec<u8>>::sse_decode(&mut deserializer);
+            deserializer.end();
+            move |context| {
+                transform_result_sse::<_, ()>((move || {
+                    let output_ok =
+                        Result::<_, ()>::Ok(crate::api::process_remove_app_config_response(
+                            api_camera_name,
+                            api_config_response,
+                        ))?;
+                    Ok(output_ok)
+                })())
+            }
+        },
+    )
+}
 fn wire__crate__api__lock_manager__release_lock_impl(
     port_: flutter_rust_bridge::for_generated::MessagePort,
     ptr_: flutter_rust_bridge::for_generated::PlatformGeneralizedUint8ListPtr,
@@ -1428,35 +1505,47 @@ fn pde_ffi_dispatcher_primary_impl(
             rust_vec_len,
             data_len,
         ),
-        13 => wire__crate__api__get_add_app_secret_impl(port, ptr, rust_vec_len, data_len),
-        14 => wire__crate__api__get_group_name_impl(port, ptr, rust_vec_len, data_len),
-        15 => wire__crate__api__get_key_packages_impl(port, ptr, rust_vec_len, data_len),
-        17 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
-        18 => wire__crate__api__logger__init_logger_impl(port, ptr, rust_vec_len, data_len),
-        19 => wire__crate__api__initialize_camera_impl(port, ptr, rust_vec_len, data_len),
-        20 => wire__crate__api__lock_manager__is_lock_held_impl(port, ptr, rust_vec_len, data_len),
-        21 => wire__crate__api__join_camera_groups_impl(port, ptr, rust_vec_len, data_len),
-        22 => wire__crate__api__livestream_decrypt_impl(port, ptr, rust_vec_len, data_len),
-        23 => wire__crate__api__livestream_update_impl(port, ptr, rust_vec_len, data_len),
-        24 => wire__crate__api__ping_proprietary_device_impl(port, ptr, rust_vec_len, data_len),
-        25 => wire__crate__api__process_add_app_config_response_impl(
+        13 => wire__crate__api__generate_remove_app_request_config_command_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        26 => wire__crate__api__process_heartbeat_config_response_impl(
+        14 => wire__crate__api__get_add_app_secret_impl(port, ptr, rust_vec_len, data_len),
+        15 => wire__crate__api__get_group_name_impl(port, ptr, rust_vec_len, data_len),
+        16 => wire__crate__api__get_key_packages_impl(port, ptr, rust_vec_len, data_len),
+        18 => wire__crate__api__init_app_impl(port, ptr, rust_vec_len, data_len),
+        19 => wire__crate__api__logger__init_logger_impl(port, ptr, rust_vec_len, data_len),
+        20 => wire__crate__api__initialize_camera_impl(port, ptr, rust_vec_len, data_len),
+        21 => wire__crate__api__lock_manager__is_lock_held_impl(port, ptr, rust_vec_len, data_len),
+        22 => wire__crate__api__join_camera_groups_impl(port, ptr, rust_vec_len, data_len),
+        23 => wire__crate__api__livestream_decrypt_impl(port, ptr, rust_vec_len, data_len),
+        24 => wire__crate__api__livestream_update_impl(port, ptr, rust_vec_len, data_len),
+        25 => wire__crate__api__ping_proprietary_device_impl(port, ptr, rust_vec_len, data_len),
+        26 => wire__crate__api__process_add_app_config_response_impl(
             port,
             ptr,
             rust_vec_len,
             data_len,
         ),
-        27 => wire__crate__api__lock_manager__release_lock_impl(port, ptr, rust_vec_len, data_len),
-        28 => wire__crate__api__rust_lib_version_impl(port, ptr, rust_vec_len, data_len),
-        29 => wire__crate__api__logger__rust_set_up_impl(port, ptr, rust_vec_len, data_len),
-        30 => wire__crate__api__logger__rust_shutdown_impl(port, ptr, rust_vec_len, data_len),
-        31 => wire__crate__api__shutdown_app_impl(port, ptr, rust_vec_len, data_len),
-        32 => {
+        27 => wire__crate__api__process_heartbeat_config_response_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        28 => wire__crate__api__process_remove_app_config_response_impl(
+            port,
+            ptr,
+            rust_vec_len,
+            data_len,
+        ),
+        29 => wire__crate__api__lock_manager__release_lock_impl(port, ptr, rust_vec_len, data_len),
+        30 => wire__crate__api__rust_lib_version_impl(port, ptr, rust_vec_len, data_len),
+        31 => wire__crate__api__logger__rust_set_up_impl(port, ptr, rust_vec_len, data_len),
+        32 => wire__crate__api__logger__rust_shutdown_impl(port, ptr, rust_vec_len, data_len),
+        33 => wire__crate__api__shutdown_app_impl(port, ptr, rust_vec_len, data_len),
+        34 => {
             wire__crate__api__lock_manager__try_acquire_lock_impl(port, ptr, rust_vec_len, data_len)
         }
         _ => unreachable!(),
@@ -1471,7 +1560,7 @@ fn pde_ffi_dispatcher_sync_impl(
 ) -> flutter_rust_bridge::for_generated::WireSyncRust2DartSse {
     // Codec=Pde (Serialization + dispatch), see doc to use other codecs
     match func_id {
-        16 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
+        17 => wire__crate__api__simple__greet_impl(ptr, rust_vec_len, data_len),
         _ => unreachable!(),
     }
 }

@@ -508,6 +508,23 @@ class HttpClientService {
     Log.d("Successfully deleted $serverFile from server");
   });
 
+  /// Deletes the server-side directory for an MLS group.
+  Future<Result<void>> deregisterGroup(String groupName) => _wrap(() async {
+    if (groupName.isEmpty || utf8.encode(groupName).length > 4096) {
+      throw const FormatException('Invalid group name');
+    }
+    final creds = await _getValidatedCredentials();
+    final url = _buildUrl(creds.serverAddr, [groupName]);
+    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final response = await http.delete(url, headers: headers);
+    await _handleServerVersionHeader(response);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        'Failed to deregister group: ${response.statusCode} ${response.reasonPhrase}',
+      );
+    }
+  });
+
   /// POST /fcm_token
   Future<Result<void>> uploadFcmToken(String token) => _wrap(() async {
     final creds = await _getValidatedCredentials();
