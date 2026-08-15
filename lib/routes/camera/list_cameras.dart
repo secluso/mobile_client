@@ -10,6 +10,7 @@ import 'package:path/path.dart' as p;
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:secluso_flutter/constants.dart';
 import 'package:secluso_flutter/database/entities.dart';
@@ -27,6 +28,9 @@ import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/secluso_theme.dart';
 import 'package:secluso_flutter/utilities/video_thumbnail_store.dart';
 import 'package:secluso_flutter/routes/camera/shell_home_page.dart';
+import 'package:secluso_flutter/src/rust_camera/api.dart' as rust_camera_api;
+import 'package:secluso_flutter/src/rust_camera/guard.dart';
+import 'package:flutter_zxing/flutter_zxing.dart';
 import 'view_camera.dart';
 import 'camera_ui_bridge.dart';
 import 'new/show_new_camera_options.dart';

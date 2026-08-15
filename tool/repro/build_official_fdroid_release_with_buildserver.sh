@@ -17,7 +17,7 @@ dockerfile_hash() {
 DEFAULT_IMAGE_TAG="secluso-mobile-repro:$(dockerfile_hash)"
 IMAGE_TAG="${SECLUSO_REPRO_IMAGE_TAG:-$DEFAULT_IMAGE_TAG}"
 OUTPUT_DIR="${SECLUSO_FDROID_OUTPUT_DIR:-$REPO_ROOT/build/reproducible/fdroid}"
-BASE_VERSION_CODE="$(sed -n -E 's/^version:\s.+\+([0-9]+)$/\1/p' "$REPO_ROOT/pubspec.yaml" | head -n 1)"
+BASE_VERSION_CODE="$(sed -n -E 's/^version:[[:space:]].+\+([0-9]+)$/\1/p' "$REPO_ROOT/pubspec.yaml" | head -n 1)"
 
 if [[ -z "$BASE_VERSION_CODE" ]]; then
   echo "Could not determine base Android versionCode from pubspec.yaml" >&2

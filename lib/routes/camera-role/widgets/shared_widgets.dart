@@ -183,6 +183,7 @@ class CameraRoleInfoRow extends StatelessWidget {
     this.valueColor = Colors.white,
     this.mono = false,
     this.showDivider = true,
+    this.onTap,
     super.key,
   });
 
@@ -193,11 +194,13 @@ class CameraRoleInfoRow extends StatelessWidget {
   final Color valueColor;
   final bool mono;
   final bool showDivider;
+  final VoidCallback? onTap;
 
-  @override
+ @override
   Widget build(BuildContext context) {
     final base = mono ? GoogleFonts.robotoMono() : GoogleFonts.inter();
-    return Container(
+  
+    final row = Container(
       height: scale * 47,
       padding: EdgeInsets.symmetric(horizontal: scale * 14),
       decoration: BoxDecoration(
@@ -238,7 +241,19 @@ class CameraRoleInfoRow extends StatelessWidget {
         ],
       ),
     );
-  }
+  
+    if (onTap == null) {
+      return row;
+    }
+  
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: row,
+      ),
+    );
+  } 
 }
 
 class CameraRoleTintedCard extends StatelessWidget {

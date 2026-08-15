@@ -1,0 +1,6 @@
+rust_input: crate::api
+rust_root: rust_camera/
+dart_output: lib/src/rust_camera
+rust_preamble: |
+  use std::net::TcpStream;
+  use log::LevelFilter;

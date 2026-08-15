@@ -99,7 +99,7 @@ class AddAppFlow {
                             }
 
                             final addAppRequestResult =
-                                await HttpClientService.instance.addAppRequest(
+                                await HttpClientService.instance.sendMsg(
                               'add_app_start',
                               keyPackages,
                             );
@@ -112,7 +112,7 @@ class AddAppFlow {
                             }
 
                             final newAppDataResult =
-                                await HttpClientService.instance.addAppCheck(
+                                await HttpClientService.instance.receiveMsg(
                               'add_app_finish',
                             );
 

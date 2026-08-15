@@ -1672,7 +1672,7 @@ class _ProprietaryCameraInfoDialogState
                                         child: _ProprietarySetupInput(
                                           controller: _cameraNameController,
                                           focusNode: _cameraNameFocusNode,
-                                          hintText: 'e.g. Front Door',
+                                          hintText: 'e.g., Kitchen',
                                           scale: scale,
                                           borderColor: inputBorderColor,
                                           fillColor: inputColor,

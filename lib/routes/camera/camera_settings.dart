@@ -354,7 +354,7 @@ class _SettingsPageState extends State<SettingsPage> {
     final httpClient = HttpClientService.instance;
 
     final newAppKeyPackagesResult =
-        await httpClient.addAppCheck("add_app_start");
+        await httpClient.receiveMsg("add_app_start");
 
     if (newAppKeyPackagesResult.isFailure) {
       throw Exception(
@@ -425,7 +425,7 @@ class _SettingsPageState extends State<SettingsPage> {
     await writeEpoch(widget.cameraName, 'thumbnail', thumbnailEpoch + 1);
 
     final addAppRequestResult =
-        await httpClient.addAppRequest("add_app_finish", newAppDataVec);
+        await httpClient.sendMsg("add_app_finish", newAppDataVec);
 
     if (addAppRequestResult.isFailure) {
       throw Exception(

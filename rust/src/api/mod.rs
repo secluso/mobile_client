@@ -382,6 +382,7 @@ pub fn flutter_add_camera(
     password: String,
     pairing_token: String,
     credentials_full: String,
+    android: bool,
 ) -> String {
     let (camera_name, trace_id) = split_trace_camera(&camera_name);
     let _trace_guard = logger::set_log_trace(trace_id);
@@ -412,6 +413,7 @@ pub fn flutter_add_camera(
             password,
             pairing_token,
             credentials_full,
+            android,
         )
     };
 

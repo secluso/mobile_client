@@ -126,6 +126,7 @@ abstract class RustLibApi extends BaseApi {
     required String password,
     required String pairingToken,
     required String credentialsFull,
+    required bool android,
   });
 
   Future<Uint8List> crateApiGenerateAddAppRequestConfigCommand({
@@ -558,6 +559,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String password,
     required String pairingToken,
     required String credentialsFull,
+    required bool android,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -571,6 +573,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(password, serializer);
           sse_encode_String(pairingToken, serializer);
           sse_encode_String(credentialsFull, serializer);
+          sse_encode_bool(android, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -592,6 +595,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           password,
           pairingToken,
           credentialsFull,
+          android,
         ],
         apiImpl: this,
       ),
@@ -609,6 +613,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       "password",
       "pairingToken",
       "credentialsFull",
+      "android",
     ],
   );
 

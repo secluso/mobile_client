@@ -54,6 +54,7 @@ Future<String> flutterAddCamera({
   required String password,
   required String pairingToken,
   required String credentialsFull,
+  required bool android,
 }) => RustLib.instance.api.crateApiFlutterAddCamera(
   cameraName: cameraName,
   ip: ip,
@@ -63,6 +64,7 @@ Future<String> flutterAddCamera({
   password: password,
   pairingToken: pairingToken,
   credentialsFull: credentialsFull,
+  android: android,
 );
 
 Future<void> shutdownApp() => RustLib.instance.api.crateApiShutdownApp();

@@ -697,10 +697,10 @@ class HttpClientService {
     return response.bodyBytes;
   });
 
-  Future<Result<Uint8List>> addAppCheck(String op) => _wrap(() async {
+  Future<Result<Uint8List>> receiveMsg(String msgTag) => _wrap(() async {
     final creds = await _getValidatedCredentials();
 
-    final url = _buildUrl(creds.serverAddr, ['add_app_check', op]);
+    final url = _buildUrl(creds.serverAddr, ['receive_msg', msgTag]);
     final headers = await _basicAuthHeaders(creds.username, creds.password);
 
     final response = await _cappedGetResponse(
@@ -719,11 +719,11 @@ class HttpClientService {
     return response.bodyBytes;
   });
 
-  Future<Result<void>> addAppRequest(String op, Uint8List data) =>
+  Future<Result<void>> sendMsg(String msgTag, Uint8List data) =>
       _wrap(() async {
     final creds = await _getValidatedCredentials();
 
-    final url = _buildUrl(creds.serverAddr, ['add_app_request', op]);
+    final url = _buildUrl(creds.serverAddr, ['send_msg', msgTag]);
     final headers = await _basicAuthHeaders(creds.username, creds.password);
     headers[HttpHeaders.contentTypeHeader] = 'application/octet-stream';
 

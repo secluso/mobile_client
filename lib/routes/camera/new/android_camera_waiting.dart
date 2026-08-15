@@ -2,27 +2,39 @@
 
 import 'dart:async';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:secluso_flutter/constants.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:secluso_flutter/routes/camera/list_cameras.dart';
-import 'package:secluso_flutter/utilities/logger.dart';
-import 'package:secluso_flutter/utilities/app_coordination_state.dart';
-import 'package:secluso_flutter/utilities/camera_version_info.dart';
-import 'package:secluso_flutter/utilities/rust_util.dart';
-import 'package:secluso_flutter/database/entities.dart';
 import 'package:secluso_flutter/database/app_stores.dart';
+import 'package:secluso_flutter/database/entities.dart';
 import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/notifications/notification_permissions.dart';
+import 'package:secluso_flutter/routes/camera/list_cameras.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/secluso_theme.dart';
+import 'package:secluso_flutter/utilities/app_coordination_state.dart';
+import 'package:secluso_flutter/utilities/camera_version_info.dart';
+import 'package:secluso_flutter/utilities/logger.dart';
+import 'package:secluso_flutter/utilities/rust_util.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-class CameraSetupStatusDialog extends StatefulWidget {
-  final Map<String, dynamic> result;
+class AndroidCameraSetupStatusDialog extends StatefulWidget {
+  const AndroidCameraSetupStatusDialog({
+    super.key,
+    required this.cameraName,
+    required this.qrCode,
+  });
 
-  const CameraSetupStatusDialog({super.key, required this.result});
+  static const String relayPairingCameraIp = '0.0.0.0';
 
-  static Future<void> show(BuildContext context, Map<String, dynamic> result) {
+  final String cameraName;
+  final Uint8List qrCode;
+
+  static Future<void> show(
+    BuildContext context, {
+    required String cameraName,
+    required Uint8List qrCode,
+  }) {
     return showDialog(
       context: context,
       barrierDismissible: false,
@@ -31,17 +43,21 @@ class CameraSetupStatusDialog extends StatefulWidget {
           (_) => Dialog(
             backgroundColor: Colors.transparent,
             elevation: 0,
-            child: CameraSetupStatusDialog(result: result),
+            child: AndroidCameraSetupStatusDialog(
+              cameraName: cameraName,
+              qrCode: qrCode,
+            ),
           ),
     );
   }
 
   @override
-  State<CameraSetupStatusDialog> createState() =>
-      _CameraSetupStatusDialogState();
+  State<AndroidCameraSetupStatusDialog> createState() =>
+      _AndroidCameraSetupStatusDialogState();
 }
 
-class _CameraSetupStatusDialogState extends State<CameraSetupStatusDialog> {
+class _AndroidCameraSetupStatusDialogState
+    extends State<AndroidCameraSetupStatusDialog> {
   bool? _success;
 
   @override
@@ -53,15 +69,18 @@ class _CameraSetupStatusDialogState extends State<CameraSetupStatusDialog> {
   void _startSetup() {
     setState(() => _success = null);
 
-    final cameraName = widget.result["cameraName"]! as String;
-    final ip = widget.result["cameraIp"]! as String;
-    final qrCode = List<int>.from(widget.result["qrCode"]! as Uint8List);
+    Log.d("AndroidCameraSetup: begin for ${widget.cameraName}");
 
-    Log.d("CameraSetup: begin for $cameraName");
-
-    addCamera(cameraName, ip, qrCode, false, '', '', '', false).then((
-      versionInfoJson,
-    ) async {
+    addCamera(
+      widget.cameraName,
+      AndroidCameraSetupStatusDialog.relayPairingCameraIp,
+      List<int>.from(widget.qrCode),
+      false,
+      '',
+      '',
+      '',
+      true,
+    ).then((versionInfoJson) async {
       if (!mounted) return;
 
       final success =
@@ -70,7 +89,7 @@ class _CameraSetupStatusDialogState extends State<CameraSetupStatusDialog> {
 
       if (success) {
         await _persistCamera(
-          cameraName,
+          widget.cameraName,
           CameraVersionInfo.fromJsonString(versionInfoJson),
         );
       }
@@ -165,7 +184,7 @@ class _CameraSetupStatusDialogState extends State<CameraSetupStatusDialog> {
       const CircularProgressIndicator(),
       const SizedBox(height: 20),
       Text(
-        'Setting up the camera.',
+        'Setting up the Android camera.',
         style: Theme.of(
           context,
         ).textTheme.headlineSmall?.copyWith(color: Colors.white, fontSize: 26),
