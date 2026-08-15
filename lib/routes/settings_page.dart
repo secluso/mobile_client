@@ -14,6 +14,7 @@ import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/notifications/android_push_transport.dart';
 import 'package:secluso_flutter/notifications/unified_push_service.dart';
 import 'package:secluso_flutter/routes/camera/camera_ui_bridge.dart';
+import 'package:secluso_flutter/routes/onboarding/walkthrough_page.dart';
 import 'package:secluso_flutter/routes/theme_provider.dart';
 import 'package:secluso_flutter/ui/google_fonts.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
@@ -1045,6 +1046,25 @@ class _SettingsPageState extends State<SettingsPage> {
           dividerColor: shell ? shellDividerColor : null,
           boxShadow: shell ? shellCardShadow : null,
           children: [
+            ShellSettingsRow(
+              title: 'Walkthrough',
+              value: 'Replay',
+              onTap:
+                  _isPreviewMode ? null : () => WalkthroughPage.open(context),
+              height: shell ? shellMetrics.aboutLinkRowHeight : 56,
+              horizontalPadding: shell ? shellMetrics.rowHorizontalPadding : 18,
+              titleFontSize: shell ? shellMetrics.rowTitleSize : 16,
+              valueFontSize: shell ? shellMetrics.rowValueSize : 16,
+              titleWeight: shell ? FontWeight.w400 : FontWeight.w500,
+              valueWeight: shell ? FontWeight.w400 : FontWeight.w500,
+              chevronSize: shell ? shellMetrics.chevronSize : 24,
+              valueChevronGap: shell ? 8 : 10,
+              titleColor: shell ? shellPrimaryTextColor : null,
+              valueColor: shell ? shellSecondaryTextColor : null,
+              chevronColor: shell ? shellChevronColor : null,
+              titleStyle: shellRowTitleStyle,
+              valueStyle: shellRowValueStyle,
+            ),
             ShellSettingsRow(
               title: 'Version',
               value: _appVersionDisplay,

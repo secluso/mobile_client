@@ -43,6 +43,7 @@ import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/font_licenses.dart';
 import 'package:secluso_flutter/ui/secluso_theme.dart';
 import 'package:secluso_flutter/routes/camera-role/camera_role_pages.dart';
+import 'package:secluso_flutter/routes/onboarding/walkthrough_page.dart';
 import 'package:secluso_flutter/routes/system_shell_page.dart';
 import 'package:secluso_flutter/routes/camera-role/android_camera_hub_launcher.dart';
 import 'package:secluso_flutter/utilities/device_role_controller.dart';
@@ -991,6 +992,15 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
   }
 
   Future<void> _loadInitialPage() async {
+    // First launch: walk the user through what Secluso is.
+    if (!await WalkthroughPage.hasBeenSeen()) {
+      _show(WalkthroughPage(onDone: _resolveInitialPage));
+      return;
+    }
+    await _resolveInitialPage();
+  }
+
+  Future<void> _resolveInitialPage() async {
     final prefs = await SharedPreferences.getInstance();
     final hasRelay = (prefs.getString(PrefKeys.serverAddr) ?? '').isNotEmpty;
     final role = prefs.getString(PrefKeys.deviceRole);

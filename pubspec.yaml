@@ -120,6 +120,7 @@ flutter:
       - assets/design/
       - assets/icon_centered.png
       - assets/animations/lock_animation.json
+      - assets/walkthrough/
       - assets/licenses/fonts/
   fonts:
       - family: Inter
