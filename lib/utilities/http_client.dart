@@ -491,6 +491,39 @@ class HttpClientService {
     );
   }
 
+  Future<List<String>> _objectPath({
+    required String cameraName,
+    required String type,
+    required String group,
+    required String serverFile,
+  }) async {
+    if (!(await _backend()).isEnterprise) {
+      return [group, serverFile];
+    }
+
+    final epoch = int.tryParse(serverFile);
+    if (epoch == null) {
+      return [group, serverFile];
+    }
+
+    final hashed = switch (type) {
+      Group.thumbnail => await ObjectName.forThumbnail(
+        cameraName: cameraName,
+        groupName: group,
+        epoch: epoch,
+      ),
+      _ => await ObjectName.forEpoch(
+        cameraName: cameraName,
+        groupName: group,
+        epoch: epoch,
+      ),
+    };
+    if (hashed.isEmpty || hashed.startsWith("Error")) {
+      return [group, serverFile];
+    }
+    return [hashed];
+  }
+
   /// Downloads file and saves as [fileName]
   Future<Result<DownloadResult>> download({
     String? destinationFile,
@@ -504,7 +537,15 @@ class HttpClientService {
     Log.d(
       "Camera Name: $cameraName, Group Type: $type, Group: $group, Server File: $serverFile",
     );
-    final url = _buildUrl(creds.serverAddr, [group, serverFile]);
+    final url = _buildUrl(
+      creds.serverAddr,
+      await _objectPath(
+        cameraName: cameraName,
+        type: type,
+        group: group,
+        serverFile: serverFile,
+      ),
+    );
     final headers = await _basicAuthHeaders(
       creds.username,
       creds.password,
@@ -570,7 +611,15 @@ class HttpClientService {
     Log.d(
       "Camera Name: $cameraName, Group Type: $type, Group: $group, Server File: $serverFile",
     );
-    final url = _buildUrl(creds.serverAddr, [group, serverFile]);
+    final url = _buildUrl(
+      creds.serverAddr,
+      await _objectPath(
+        cameraName: cameraName,
+        type: type,
+        group: group,
+        serverFile: serverFile,
+      ),
+    );
     final headers = await _basicAuthHeaders(
       creds.username,
       creds.password,
@@ -719,7 +768,6 @@ class HttpClientService {
     required int chunkNumber,
   }) => _wrap(() async {
     final creds = await _getValidatedCredentials();
-
     final group = await _groupName(cameraName, Group.livestream);
     final url = _buildUrl(creds.serverAddr, ['livestream', group, chunkNumber]);
     final headers = await _basicAuthHeaders(
@@ -740,11 +788,12 @@ class HttpClientService {
       }
       headers['X-Livestream-Session'] = session;
     }
-
+    // A stalled connection must not hang the stream page
     final response = await _cappedGetResponse(
       url,
       headers: headers,
       maxBytes: maxLivestreamFileSize,
+      timeout: const Duration(seconds: 15),
     );
     await _handleServerVersionHeader(response);
     if (response.statusCode != 200) {
@@ -784,7 +833,9 @@ class HttpClientService {
     }
 
     final url = _buildUrl(serverAddr, ['livestream', group]);
-    final response = await http.get(url, headers: headers);
+    final response = await http
+        .get(url, headers: headers)
+        .timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) {
       return null;
     }
@@ -802,6 +853,34 @@ class HttpClientService {
       final session = decoded is Map ? decoded['session'] : null;
       return session is String && session.isNotEmpty ? session : null;
     } catch (_) {
+      return null;
+    }
+  }
+
+  /// The delivery service's livestream event socket
+  Future<WebSocket?> livestreamEventSocket(String cameraName) async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) {
+      return null;
+    }
+
+    final group = await _groupName(cameraName, Group.livestream);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
+    final addr = creds.serverAddr
+        .replaceFirst('https://', 'wss://')
+        .replaceFirst('http://', 'ws://');
+
+    try {
+      return await WebSocket.connect(
+        '$addr/livestream/$group',
+        headers: headers,
+      ).timeout(const Duration(seconds: 5));
+    } catch (e) {
+      Log.d('Livestream event socket unavailable, using timers: $e');
       return null;
     }
   }

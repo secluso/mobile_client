@@ -18,6 +18,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.datasource.DataSource
+import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
@@ -53,8 +54,20 @@ class BytePlayerPlatformView(
         val mediaSrc = ProgressiveMediaSource.Factory(dsFactory)
             .createMediaSource(MediaItem.fromUri("queue://dummy"))
 
+        // The default load control buffers 2.5s of media before the first frame
+        // This is a live feed: start s soon as a fragment is decodable. Keep buffer shallow!
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                /* minBufferMs = */ 1_000,
+                /* maxBufferMs = */ 10_000,
+                /* bufferForPlaybackMs = */ 250,
+                /* bufferForPlaybackAfterRebufferMs = */ 500,
+            )
+            .build()
+
         player = ExoPlayer.Builder(ctx)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dsFactory))
+            .setLoadControl(loadControl)
             .build().apply {
                 setMediaSource(mediaSrc, 0)
                 playWhenReady = true
