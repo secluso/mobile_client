@@ -6,59 +6,77 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:secluso_flutter/routes/camera-role/android_camera_hub_launcher.dart';
-import 'package:secluso_flutter/routes/camera-role/pages/camera_role_recording_page.dart';
+import 'package:secluso_flutter/routes/camera-role/camera_role_settings.dart';
 import 'package:secluso_flutter/routes/camera-role/pages/camera_role_preview_page.dart';
+import 'package:secluso_flutter/routes/camera-role/pages/camera_role_recording_page.dart';
 import 'package:secluso_flutter/routes/camera-role/theme.dart';
+import 'package:secluso_flutter/routes/camera-role/widgets/editorial.dart';
 import 'package:secluso_flutter/routes/camera-role/widgets/qr_card.dart';
-import 'package:secluso_flutter/routes/camera-role/widgets/shared_widgets.dart';
-import 'package:secluso_flutter/ui/google_fonts.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
+
+/// Where this phone is in the process of becoming a camera.
+enum _Stage {
+  /// Asking the platform which cameras and video modes exist here.
+  readingSpecs,
+
+  /// Waiting for the user to pick a camera, resolution and frame rate.
+  configuring,
+
+  /// Handing the settings to the hub and bringing it up.
+  starting,
+
+  /// Showing the code, waiting for the main phone to scan it.
+  awaitingScan,
+
+  failed,
+}
 
 class CameraRolePairingPage extends StatefulWidget {
   const CameraRolePairingPage({
     super.key,
     this.onConnected,
     this.onClose,
+    this.previewQrPayload,
   });
 
   final ValueChanged<bool>? onConnected;
   final VoidCallback? onClose;
+
+  /// Renders the scan step with this payload instead of talking to the camera  hub.
+  /// Only for the design lab
+  final String? previewQrPayload;
 
   @override
   State<CameraRolePairingPage> createState() => _CameraRolePairingPageState();
 }
 
 class _CameraRolePairingPageState extends State<CameraRolePairingPage> {
-  static const _checkingTitle = 'Checking camera';
-  static const _checkingBody =
-    'Loading the camera settings available on this phone.';
-
-  String? _qrPayload;
-  String _statusTitle = _checkingTitle;
-  String _statusBody = _checkingBody;
-  bool _loadingSpecs = true;
-  bool _starting = false;
-  bool _waitingForPairing = false;
+  _Stage _stage = _Stage.readingSpecs;
   Object? _error;
-  List<AndroidCameraSpec> _cameraSpecs = const [];
-  AndroidCameraSpec? _selectedSpec;
-  AndroidCameraResolution? _selectedResolution;
-  AndroidCameraFrameRateRange? _selectedFrameRateRange;
+  String? _qrPayload;
+
+  List<AndroidCameraSpec> _specs = const [];
+  AndroidCameraSpec? _spec;
+  AndroidCameraResolution? _resolution;
+  AndroidCameraFrameRateRange? _frameRate;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_loadCameraSpecs());
+    final preview = widget.previewQrPayload;
+    if (preview != null) {
+      _qrPayload = preview;
+      _stage = _Stage.awaitingScan;
+      return;
+    }
+    unawaited(_readCameraSpecs());
   }
 
-  Future<void> _loadCameraSpecs() async {
+  Future<void> _readCameraSpecs() async {
     setState(() {
-      _loadingSpecs = true;
-      _starting = false;
-      _waitingForPairing = false;
+      _stage = _Stage.readingSpecs;
       _error = null;
-      _statusTitle = _checkingTitle;
-      _statusBody = _checkingBody;
+      _qrPayload = null;
     });
 
     try {
@@ -67,193 +85,117 @@ class _CameraRolePairingPageState extends State<CameraRolePairingPage> {
         throw StateError('No Android cameras are available on this phone.');
       }
 
-      final selectedSpec = specs.firstWhere(
-        (spec) => spec.facing == AndroidCameraHubLauncher.facingBack,
+      final spec = specs.firstWhere(
+        (s) => s.facing == AndroidCameraHubLauncher.facingBack,
         orElse: () => specs.first,
       );
-      final selectedResolution = _defaultResolution(selectedSpec);
-      final selectedFrameRateRange = _defaultFrameRateRange(selectedSpec);
 
       if (!mounted) return;
       setState(() {
-        _cameraSpecs = specs;
-        _selectedSpec = selectedSpec;
-        _selectedResolution = selectedResolution;
-        _selectedFrameRateRange = selectedFrameRateRange;
-        _loadingSpecs = false;
-        _statusTitle = 'Choose camera settings';
-        _statusBody =
-            'Select the camera, resolution, and frame rate before starting.';
+        _specs = specs;
+        _spec = spec;
+        _resolution = _defaultResolution(spec);
+        _frameRate = _defaultFrameRate(spec);
+        _stage = _Stage.configuring;
       });
     } catch (e, st) {
       Log.e('Loading Android camera specs failed: $e\n$st');
-      if (!mounted) return;
-      setState(() {
-        _loadingSpecs = false;
-        _starting = false;
-        _waitingForPairing = false;
-        _error = e;
-        _statusTitle = 'Unable to read camera settings';
-        _statusBody = e.toString();
-      });
+      _fail(e);
     }
   }
 
-  AndroidCameraResolution _defaultResolution(AndroidCameraSpec spec) {
-    return spec.resolutions.firstWhere(
-      (resolution) => resolution.width == 1280 && resolution.height == 720,
-      orElse: () => spec.resolutions.first,
+  AndroidCameraResolution _defaultResolution(AndroidCameraSpec spec) =>
+      spec.resolutions.firstWhere(
+        (r) => r.width == 1280 && r.height == 720,
+        orElse: () => spec.resolutions.first,
+      );
+
+  AndroidCameraFrameRateRange _defaultFrameRate(AndroidCameraSpec spec) =>
+      spec.frameRateRanges.firstWhere(
+        (r) => r.min <= 10 && r.max >= 10,
+        orElse: () => spec.frameRateRanges.first,
+      );
+
+  AndroidCameraSettings? get _settings {
+    final spec = _spec;
+    final resolution = _resolution;
+    final frameRate = _frameRate;
+    if (spec == null || resolution == null || frameRate == null) return null;
+    return AndroidCameraSettings(
+      facing: spec.facing,
+      width: resolution.width,
+      height: resolution.height,
+      frameRateRange: frameRate,
     );
   }
 
-  AndroidCameraFrameRateRange _defaultFrameRateRange(AndroidCameraSpec spec) {
-    return spec.frameRateRanges.firstWhere(
-      (range) => range.min <= 10 && range.max >= 10,
-      orElse: () => spec.frameRateRanges.first,
-    );
+  void _fail(Object error) {
+    if (!mounted) return;
+    setState(() {
+      _stage = _Stage.failed;
+      _error = error;
+    });
   }
 
-  Future<void> _bootCameraRole() async {
-    final selectedSpec = _selectedSpec;
-    final selectedResolution = _selectedResolution;
-    final selectedFrameRateRange = _selectedFrameRateRange;
-
-    if (selectedSpec == null ||
-        selectedResolution == null ||
-        selectedFrameRateRange == null) {
-      setState(() {
-        _error = StateError('Choose camera settings before starting.');
-        _statusTitle = 'Camera settings missing';
-        _statusBody = _error.toString();
-      });
+  /// Applies the chosen settings, then either jumps straight to recording (if this phone was already paired)
+  ///  or brings up a fresh pairing code.
+  Future<void> _startCamera() async {
+    final settings = _settings;
+    if (settings == null) {
+      _fail(StateError('Choose camera settings before starting.'));
       return;
     }
 
     setState(() {
-      _qrPayload = null;
-      _starting = true;
-      _waitingForPairing = false;
+      _stage = _Stage.starting;
       _error = null;
-      _statusTitle = 'Starting camera';
-      _statusBody = 'Checking whether this phone is already paired.';
+      _qrPayload = null;
     });
 
     try {
-      await AndroidCameraHubLauncher.setCameraSettings(
-        AndroidCameraSettings(
-          facing: selectedSpec.facing,
-          width: selectedResolution.width,
-          height: selectedResolution.height,
-          frameRateRange: selectedFrameRateRange,
-        ),
-      );
+      await AndroidCameraHubLauncher.setCameraSettings(settings);
+      await CameraRoleSettings.saveVideoMode(settings);
 
-      final alreadyPaired =
-          await AndroidCameraHubLauncher.hasCompletedFirstPairing();
-
-      if (alreadyPaired) {
+      if (await AndroidCameraHubLauncher.hasCompletedFirstPairing()) {
         if (!mounted) return;
         _goToRecording(isRunning: false);
         return;
       }
 
-      await _startFirstTimePairing();
-    } catch (e, st) {
-      Log.e('Camera role boot failed: $e\n$st');
+      final payload =
+          await AndroidCameraHubLauncher.startHubAndWaitForQrPayload();
       if (!mounted) return;
       setState(() {
-        _starting = false;
-        _waitingForPairing = false;
-        _error = e;
-        _statusTitle = 'Unable to start camera';
-        _statusBody = e.toString();
+        _qrPayload = payload;
+        _stage = _Stage.awaitingScan;
       });
+
+      unawaited(_awaitScan());
+    } catch (e, st) {
+      Log.e('Camera role boot failed: $e\n$st');
+      _fail(e);
     }
   }
 
-  void _selectSpec(AndroidCameraSpec? spec) {
-    if (spec == null) return;
-    setState(() {
-      _selectedSpec = spec;
-      _selectedResolution = _defaultResolution(spec);
-      _selectedFrameRateRange = _defaultFrameRateRange(spec);
-    });
-  }
-
-  void _selectResolution(AndroidCameraResolution? resolution) {
-    if (resolution == null) return;
-    setState(() => _selectedResolution = resolution);
-  }
-
-  void _selectFrameRateRange(AndroidCameraFrameRateRange? range) {
-    if (range == null) return;
-    setState(() => _selectedFrameRateRange = range);
-  }
-
-  Future<void> _previewCamera() async {
-    final selectedSpec = _selectedSpec;
-    final selectedResolution = _selectedResolution;
-    final selectedFrameRateRange = _selectedFrameRateRange;
-    if (selectedSpec == null ||
-        selectedResolution == null ||
-        selectedFrameRateRange == null) {
-      return;
-    }
-
-    await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder:
-            (_) => CameraRolePreviewPage(
-              settings: AndroidCameraSettings(
-                facing: selectedSpec.facing,
-                width: selectedResolution.width,
-                height: selectedResolution.height,
-                frameRateRange: selectedFrameRateRange,
-              ),
-            ),
-      ),
-    );
-  }
-
-  Future<void> _startFirstTimePairing() async {
-    if (!mounted) return;
-    setState(() {
-      _starting = true;
-      _waitingForPairing = false;
-      _statusTitle = 'Starting Android camera';
-      _statusBody = 'Launching the camera hub and waiting for a pairing code.';
-    });
-
-    final qrPayload = await AndroidCameraHubLauncher.startHubAndWaitForQrPayload();
-
-    if (!mounted) return;
-    setState(() {
-      _qrPayload = qrPayload;
-      _starting = false;
-      _waitingForPairing = true;
-      _statusTitle = 'Advertising over QR';
-      _statusBody =
-          'On the phone you watch cameras from, add a camera and scan this code.';
-    });
-
-    unawaited(_waitForPairingCompletion());
-  }
-
-  Future<void> _waitForPairingCompletion() async {
+  Future<void> _awaitScan() async {
     try {
       await AndroidCameraHubLauncher.waitForFirstTimeDone();
       if (!mounted) return;
       _goToRecording(isRunning: true);
     } catch (e, st) {
       Log.e('Waiting for first_time_done failed: $e\n$st');
-      if (!mounted) return;
-      setState(() {
-        _waitingForPairing = false;
-        _error = e;
-        _statusTitle = 'Pairing interrupted';
-        _statusBody = e.toString();
-      });
+      _fail(e);
     }
+  }
+
+  Future<void> _preview() async {
+    final settings = _settings;
+    if (settings == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => CameraRolePreviewPage(settings: settings),
+      ),
+    );
   }
 
   void _goToRecording({required bool isRunning}) {
@@ -262,7 +204,6 @@ class _CameraRolePairingPageState extends State<CameraRolePairingPage> {
       onConnected(isRunning);
       return;
     }
-
     Navigator.of(context).pushReplacement(
       MaterialPageRoute<void>(
         builder: (_) => CameraRoleRecordingPage(initialRunning: isRunning),
@@ -276,318 +217,237 @@ class _CameraRolePairingPageState extends State<CameraRolePairingPage> {
       onClose();
       return;
     }
-
     Navigator.of(context).maybePop();
   }
 
+  ({String title, String body}) get _copy => switch (_stage) {
+    _Stage.readingSpecs => (
+      title: 'Checking this phone',
+      body:
+          'Reading which cameras and video modes are available here. This only '
+          'takes a moment.',
+    ),
+    _Stage.configuring => (
+      title: 'Choose how it records',
+      body:
+          'Pick the camera, resolution, and frame rate. You can preview the '
+          'view before you start.',
+    ),
+    _Stage.starting => (
+      title: 'Starting camera mode',
+      body: 'Keep this phone unlocked while Secluso prepares the pairing code.',
+    ),
+    _Stage.awaitingScan => (
+      title: 'Scan from your main phone',
+      body:
+          'On the phone you watch from, add a camera and scan this code. Keep '
+          'both phones nearby, pairing finishes on its own.',
+    ),
+    _Stage.failed => (
+      title: 'Camera setup needs attention',
+      body: _describe(_error),
+    ),
+  };
+
+  /// Dart's own wording ("Bad state: ...") should not reach the screen.
+  static String _describe(Object? error) => switch (error) {
+    null => 'Something went wrong.',
+    StateError(:final message) => message,
+    _ => '$error',
+  };
+
   @override
   Widget build(BuildContext context) {
+    final copy = _copy;
     return Scaffold(
-      backgroundColor: cameraRoleBg,
+      backgroundColor: CamRole.bg,
       body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final s = cameraRoleFlowScale(constraints);
-            double sz(double v) => v * s;
-
-            final qrPayload = _qrPayload;
-            final hasError = _error != null;
-            final readyToConfigure =
-                !_loadingSpecs &&
-                !_starting &&
-                !_waitingForPairing &&
-                qrPayload == null &&
-                !hasError;
-
-            return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(sz(24), sz(8), sz(24), sz(24)),
-              child: Column(
-                children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.close_rounded,
-                        color: Colors.white,
-                        size: sz(22),
-                      ),
-                      onPressed: _close,
-                    ),
-                  ),
-                  SizedBox(height: sz(8)),
-                  CameraRoleFlowHeading(
-                    scale: s,
-                    title:
-                        hasError
-                            ? 'Camera setup needs attention'
-                            : readyToConfigure
-                                ? 'Choose camera settings'
-                            : qrPayload == null
-                                ? 'Starting camera mode'
-                                : 'Scan from your main phone',
-                    body:
-                        hasError
-                            ? 'Fix the issue below, then try again.'
-                            : readyToConfigure
-                                ? 'Pick the camera, resolution, and frame rate before pairing.'
-                            : qrPayload == null
-                                ? 'Keep this phone unlocked while Secluso prepares the pairing code.'
-                                : 'On the phone you watch your cameras from, add a camera and scan this code.',
-                  ),
-                  SizedBox(height: sz(28)),
-                  if (qrPayload != null)
-                    QrCard(scale: s, payload: qrPayload)
-                  else
-                    CameraRoleRingOrb(
-                      scale: s,
-                      icon:
-                          hasError
-                              ? Icons.error_outline_rounded
-                              : readyToConfigure
-                                  ? Icons.tune_rounded
-                              : Icons.videocam_rounded,
-                      pulse: (_loadingSpecs || _starting) && !hasError,
-                    ),
-                  SizedBox(height: sz(24)),
-                  if (readyToConfigure) ...[
-                    _buildSettingsSelector(s),
-                    SizedBox(height: sz(16)),
-                  ],
-                  CameraRoleTintedCard(
-                    scale: s,
-                    accent: hasError ? cameraRoleDanger : cameraRoleBlue,
-                    icon:
-                        hasError
-                            ? Icons.report_problem_outlined
-                            : readyToConfigure
-                                ? Icons.settings_input_component_rounded
-                            : Icons.qr_code_rounded,
-                    title: _statusTitle,
-                    body: _statusBody,
-                  ),
-                  SizedBox(height: sz(16)),
-                  CameraRoleInfoCard(
-                    scale: s,
-                    rows: [
-                      CameraRoleInfoRow(
-                        scale: s,
-                        label: 'Status',
-                        value:
-                            hasError
-                                ? 'Failed'
-                                : readyToConfigure
-                                    ? 'Ready'
-                                : _waitingForPairing
-                                    ? 'Waiting'
-                                    : _loadingSpecs
-                                        ? 'Checking'
-                                        : _starting
-                                        ? 'Starting'
-                                        : 'Advertising',
-                        valueColor:
-                            hasError
-                                ? cameraRoleDanger
-                                : readyToConfigure
-                                    ? cameraRoleEmerald
-                                : _waitingForPairing
-                                    ? cameraRoleAmber
-                                    : cameraRoleBlue,
-                        leading: cameraRoleDot(
-                          sz(6),
-                          hasError
-                              ? cameraRoleDanger
-                              : readyToConfigure
-                                  ? cameraRoleEmerald
-                              : _waitingForPairing
-                                  ? cameraRoleAmber
-                                  : cameraRoleBlue,
-                        ),
-                        showDivider: false,
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: sz(18)),
-                  if (hasError)
-                    FilledButton.icon(
-                      onPressed: _starting ? null : _loadCameraSpecs,
-                      icon: const Icon(Icons.refresh_rounded),
-                      label: const Text('Try again'),
-                    )
-                  else if (readyToConfigure)
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: _previewCamera,
-                          icon: const Icon(Icons.visibility_outlined),
-                          label: const Text('Preview Camera'),
-                        ),
-                        SizedBox(height: sz(10)),
-                        FilledButton.icon(
-                          onPressed: _bootCameraRole,
-                          icon: const Icon(Icons.play_arrow_rounded),
-                          label: const Text('Start Camera'),
-                        ),
-                      ],
-                    )
-                  else if (_loadingSpecs)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: sz(15),
-                          height: sz(15),
-                          child: const CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: sz(10)),
-                        Text(
-                          'Checking available settings...',
-                          style: GoogleFonts.inter(
-                            color: cameraRoleWhite20,
-                            fontSize: sz(11),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    )
-                  else if (_starting || _waitingForPairing)
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        SizedBox(
-                          width: sz(15),
-                          height: sz(15),
-                          child: const CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                        SizedBox(width: sz(10)),
-                        Text(
-                          _waitingForPairing
-                              ? 'Waiting for pairing...'
-                              : 'Starting camera...',
-                          style: GoogleFonts.inter(
-                            color: cameraRoleWhite20,
-                            fontSize: sz(11),
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(24, 14, 24, 26),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              EditorialHeader(
+                eyebrow: 'Be a camera',
+                title: copy.title,
+                body: copy.body,
+                action: IconButton(
+                  onPressed: _close,
+                  icon: const Icon(Icons.close_rounded),
+                  color: CamRole.paper,
+                  iconSize: 22,
+                  tooltip: 'Close',
+                ),
               ),
-            );
-          },
+              ..._stageContent(),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildSettingsSelector(double scale) {
-    final selectedSpec = _selectedSpec;
-    final selectedResolution = _selectedResolution;
-    final selectedFrameRateRange = _selectedFrameRateRange;
-
-    if (selectedSpec == null ||
-        selectedResolution == null ||
-        selectedFrameRateRange == null) {
-      return const SizedBox.shrink();
-    }
-
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(14 * scale),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.03),
-        borderRadius: BorderRadius.circular(12 * scale),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+  List<Widget> _stageContent() => switch (_stage) {
+    _Stage.awaitingScan => [
+      const SizedBox(height: 34),
+      Center(child: PairingQr(payload: _qrPayload!)),
+      const SizedBox(height: 34),
+      const EditorialFootnote(
+        "Pairing shares this camera's keys, device to device.",
       ),
-      child: Column(
-        children: [
-          _SettingsDropdown<AndroidCameraSpec>(
-            scale: scale,
-            value: selectedSpec,
-            items: _cameraSpecs,
-            label: 'Camera',
-            itemLabel: (spec) => spec.facingLabel,
-            onChanged: _selectSpec,
-          ),
-          SizedBox(height: 10 * scale),
-          _SettingsDropdown<AndroidCameraResolution>(
-            scale: scale,
-            value: selectedResolution,
-            items: selectedSpec.resolutions,
-            label: 'Resolution',
-            itemLabel: (resolution) => resolution.label,
-            onChanged: _selectResolution,
-          ),
-          SizedBox(height: 10 * scale),
-          _SettingsDropdown<AndroidCameraFrameRateRange>(
-            scale: scale,
-            value: selectedFrameRateRange,
-            items: selectedSpec.frameRateRanges,
-            label: 'Frame rate',
-            itemLabel: (range) => range.label,
-            onChanged: _selectFrameRateRange,
-          ),
-        ],
+    ],
+    _Stage.configuring => [
+      const SizedBox(height: 30),
+      _VideoModePicker(
+        specs: _specs,
+        spec: _spec!,
+        resolution: _resolution!,
+        frameRate: _frameRate!,
+        onSpec:
+            (spec) => setState(() {
+              _spec = spec;
+              _resolution = _defaultResolution(spec);
+              _frameRate = _defaultFrameRate(spec);
+            }),
+        onResolution: (r) => setState(() => _resolution = r),
+        onFrameRate: (r) => setState(() => _frameRate = r),
       ),
+      const SizedBox(height: 26),
+      EditorialButton(label: 'Preview the view', onPressed: _preview),
+      const SizedBox(height: 12),
+      EditorialButton(
+        label: 'Start camera',
+        onPressed: _startCamera,
+        primary: true,
+      ),
+    ],
+    _Stage.readingSpecs ||
+    _Stage.starting => const [SizedBox(height: 44), Center(child: _Waiting())],
+    _Stage.failed => [
+      const SizedBox(height: 30),
+      EditorialButton(label: 'Try again', onPressed: _readCameraSpecs),
+    ],
+  };
+}
+
+class _Waiting extends StatelessWidget {
+  const _Waiting();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 22,
+      height: 22,
+      child: CircularProgressIndicator(strokeWidth: 2, color: CamRole.warmDim),
     );
   }
 }
 
-class _SettingsDropdown<T> extends StatelessWidget {
-  const _SettingsDropdown({
-    required this.scale,
-    required this.value,
-    required this.items,
-    required this.label,
-    required this.itemLabel,
-    required this.onChanged,
+/// Camera, resolution and frame rate, as three quiet hairline rows.
+class _VideoModePicker extends StatelessWidget {
+  const _VideoModePicker({
+    required this.specs,
+    required this.spec,
+    required this.resolution,
+    required this.frameRate,
+    required this.onSpec,
+    required this.onResolution,
+    required this.onFrameRate,
   });
 
-  final double scale;
-  final T value;
-  final List<T> items;
-  final String label;
-  final String Function(T item) itemLabel;
-  final ValueChanged<T?> onChanged;
+  final List<AndroidCameraSpec> specs;
+  final AndroidCameraSpec spec;
+  final AndroidCameraResolution resolution;
+  final AndroidCameraFrameRateRange frameRate;
+  final ValueChanged<AndroidCameraSpec> onSpec;
+  final ValueChanged<AndroidCameraResolution> onResolution;
+  final ValueChanged<AndroidCameraFrameRateRange> onFrameRate;
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<T>(
-      value: value,
-      items:
-          items
-              .map(
-                (item) => DropdownMenuItem<T>(
-                  value: item,
-                  child: Text(itemLabel(item)),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        const SectionHead('This phone'),
+        _PickerRow<AndroidCameraSpec>(
+          title: 'Lens',
+          value: spec,
+          options: specs,
+          labelOf: (s) => s.facingLabel,
+          onChanged: onSpec,
+        ),
+        _PickerRow<AndroidCameraResolution>(
+          title: 'Video quality',
+          value: resolution,
+          options: spec.resolutions,
+          labelOf: (r) => r.label,
+          onChanged: onResolution,
+        ),
+        _PickerRow<AndroidCameraFrameRateRange>(
+          title: 'Frame rate',
+          value: frameRate,
+          options: spec.frameRateRanges,
+          labelOf: (r) => r.label,
+          onChanged: onFrameRate,
+        ),
+      ],
+    );
+  }
+}
+
+/// A settings row that opens a sheet of choices, rather than an inline dropdown.
+class _PickerRow<T> extends StatelessWidget {
+  const _PickerRow({
+    required this.title,
+    required this.value,
+    required this.options,
+    required this.labelOf,
+    required this.onChanged,
+  });
+
+  final String title;
+  final T value;
+  final List<T> options;
+  final String Function(T) labelOf;
+  final ValueChanged<T> onChanged;
+
+  Future<void> _choose(BuildContext context) async {
+    final picked = await showModalBottomSheet<T>(
+      context: context,
+      backgroundColor: CamRole.bg,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder:
+          (sheetContext) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 20, 24, 4),
+                  child: Text(title, style: CamRoleText.title),
                 ),
-              )
-              .toList(growable: false),
-      onChanged: onChanged,
-      dropdownColor: cameraRoleBg,
-      iconEnabledColor: Colors.white,
-      style: GoogleFonts.inter(
-        color: Colors.white,
-        fontSize: 12 * scale,
-        fontWeight: FontWeight.w600,
-      ),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: GoogleFonts.inter(
-          color: cameraRoleWhite40,
-          fontSize: 11 * scale,
-          fontWeight: FontWeight.w500,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8 * scale),
-          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(8 * scale),
-          borderSide: BorderSide(color: cameraRoleBlue),
-        ),
-      ),
+                for (final option in options)
+                  SettingRow(
+                    title: labelOf(option),
+                    value: option == value ? 'Selected' : null,
+                    onTap: () => Navigator.of(sheetContext).pop(option),
+                  ),
+                const SizedBox(height: 12),
+              ],
+            ),
+          ),
+    );
+    if (picked != null) onChanged(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SettingRow(
+      title: title,
+      value: labelOf(value),
+      onTap: options.length > 1 ? () => _choose(context) : null,
     );
   }
 }

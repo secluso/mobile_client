@@ -44,7 +44,7 @@ import 'package:secluso_flutter/ui/font_licenses.dart';
 import 'package:secluso_flutter/ui/secluso_theme.dart';
 import 'package:secluso_flutter/routes/camera-role/camera_role_pages.dart';
 import 'package:secluso_flutter/routes/onboarding/walkthrough_page.dart';
-import 'package:secluso_flutter/routes/system_shell_page.dart';
+import 'package:secluso_flutter/routes/system/setup_choice_page.dart';
 import 'package:secluso_flutter/routes/camera-role/android_camera_hub_launcher.dart';
 import 'package:secluso_flutter/utilities/device_role_controller.dart';
 import 'dart:isolate';
@@ -1023,7 +1023,7 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
     setState(() => _page = page);
   }
 
-  Widget _roleSelectPage() => RoleSelectPage(
+  Widget _roleSelectPage() => RoleChoicePage(
     onWatchCameras: _chooseViewerRole,
     onBeCamera: _chooseCameraRole,
   );

@@ -33,6 +33,12 @@ const bool _captureMode = bool.fromEnvironment(
   defaultValue: false,
 );
 
+final Uri _seclusoWebsiteUri = Uri.parse('https://secluso.com');
+final Uri _seclusoSupportEmailUri = Uri(
+  scheme: 'mailto',
+  path: 'secluso@proton.me',
+  queryParameters: const {'subject': 'Secluso Support'},
+);
 final Uri _privacyPolicyUri = Uri.parse('https://secluso.com/privacy-policy');
 final Uri _termsOfServiceUri = Uri.parse('https://secluso.com/terms');
 
@@ -148,15 +154,20 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _switchRoleFromViewer() async {
     if (_isPreviewMode) return;
-  
+
     final coordinatedCameras = await AppCoordinationState.getCameraSet();
     final storedCameras = await AppStores.instance.cameraStore.getAllAsync();
-  
-    final cameraNames = <String>{
-      ...coordinatedCameras.map((name) => name.trim()).where((name) => name.isNotEmpty),
-      ...storedCameras.map((camera) => camera.name.trim()).where((name) => name.isNotEmpty),
-    }.toList();
-  
+
+    final cameraNames =
+        <String>{
+          ...coordinatedCameras
+              .map((name) => name.trim())
+              .where((name) => name.isNotEmpty),
+          ...storedCameras
+              .map((camera) => camera.name.trim())
+              .where((name) => name.isNotEmpty),
+        }.toList();
+
     if (cameraNames.isNotEmpty) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -170,15 +181,13 @@ class _SettingsPageState extends State<SettingsPage> {
       );
       return;
     }
-  
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return AlertDialog(
           title: const Text('Switch device role?'),
-          content: const Text(
-            'This returns to role selection for this phone.',
-          ),
+          content: const Text('This returns to role selection for this phone.'),
           actions: [
             TextButton(
               onPressed: () => Navigator.of(dialogContext).pop(false),
@@ -192,9 +201,9 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       },
     );
-  
+
     if (confirmed != true) return;
-  
+
     await DeviceRoleController.clearRole();
     DeviceRoleController.requestRoleSelection();
   }
@@ -1080,6 +1089,36 @@ class _SettingsPageState extends State<SettingsPage> {
               valueColor: shell ? shellSecondaryTextColor : null,
               titleStyle: shellRowTitleStyle,
               valueStyle: shellRowValueStyle,
+            ),
+            ShellSettingsRow(
+              title: 'Contact Support',
+              onTap: () => _openExternalUrl(_seclusoSupportEmailUri),
+              height: shell ? shellMetrics.aboutLinkRowHeight : 56,
+              horizontalPadding: shell ? shellMetrics.rowHorizontalPadding : 18,
+              titleFontSize: shell ? shellMetrics.rowTitleSize : 16,
+              valueFontSize: shell ? shellMetrics.rowValueSize : 16,
+              titleWeight: shell ? FontWeight.w400 : FontWeight.w500,
+              valueWeight: shell ? FontWeight.w400 : FontWeight.w500,
+              chevronSize: shell ? shellMetrics.chevronSize : 24,
+              valueChevronGap: shell ? 8 : 10,
+              titleColor: shell ? shellPrimaryTextColor : null,
+              chevronColor: shell ? shellChevronColor : null,
+              titleStyle: shellRowTitleStyle,
+            ),
+            ShellSettingsRow(
+              title: 'Visit Website',
+              onTap: () => _openExternalUrl(_seclusoWebsiteUri),
+              height: shell ? shellMetrics.aboutLinkRowHeight : 56,
+              horizontalPadding: shell ? shellMetrics.rowHorizontalPadding : 18,
+              titleFontSize: shell ? shellMetrics.rowTitleSize : 16,
+              valueFontSize: shell ? shellMetrics.rowValueSize : 16,
+              titleWeight: shell ? FontWeight.w400 : FontWeight.w500,
+              valueWeight: shell ? FontWeight.w400 : FontWeight.w500,
+              chevronSize: shell ? shellMetrics.chevronSize : 24,
+              valueChevronGap: shell ? 8 : 10,
+              titleColor: shell ? shellPrimaryTextColor : null,
+              chevronColor: shell ? shellChevronColor : null,
+              titleStyle: shellRowTitleStyle,
             ),
             ShellSettingsRow(
               title: 'Terms of Service',

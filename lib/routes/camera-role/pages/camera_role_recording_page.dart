@@ -3,13 +3,18 @@
 // We've already paired. Now we just show the current state of what this "camera" (the disposable phone) is doing.
 
 import 'package:flutter/material.dart';
+import 'package:secluso_flutter/routes/camera-role/camera_role_settings.dart';
+import 'package:secluso_flutter/routes/camera-role/pages/camera_role_settings_page.dart';
 import 'package:secluso_flutter/routes/camera-role/theme.dart';
-import 'package:secluso_flutter/routes/camera-role/widgets/shared_widgets.dart';
+import 'package:secluso_flutter/routes/camera-role/widgets/dim_when_idle.dart';
+import 'package:secluso_flutter/routes/camera-role/widgets/editorial.dart';
+import 'package:secluso_flutter/routes/camera-role/widgets/marks.dart';
 
 class CameraRoleRecordingPage extends StatefulWidget {
   const CameraRoleRecordingPage({
     super.key,
     this.initialRunning = false,
+    this.cameraName,
     this.onStart,
     this.onStop,
     this.onResetCamera,
@@ -17,6 +22,10 @@ class CameraRoleRecordingPage extends StatefulWidget {
   });
 
   final bool initialRunning;
+
+  /// Name given to this camera from the main phone, when this phone knows it.
+  final String? cameraName;
+
   final Future<void> Function()? onStart;
   final Future<void> Function()? onStop;
   final Future<void> Function()? onResetCamera;
@@ -29,340 +38,288 @@ class CameraRoleRecordingPage extends StatefulWidget {
 
 class _CameraRoleRecordingPageState extends State<CameraRoleRecordingPage> {
   late bool _running = widget.initialRunning;
+  late DateTime? _watchingSince = widget.initialRunning ? DateTime.now() : null;
   bool _starting = false;
-  bool _resetting = false;
-  bool _switchingRole = false;
+  CameraRoleSettings _settings = const CameraRoleSettings();
 
-  void _showFirstStopRecording() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('First stop recording.'),
-      ),
-    );
+  @override
+  void initState() {
+    super.initState();
+    _loadSettings();
   }
 
-  Future<void> _startRecording() async {
+  Future<void> _loadSettings() async {
+    final settings = await CameraRoleSettings.load();
+    if (!mounted) return;
+    setState(() => _settings = settings);
+  }
+
+  Future<void> _start() async {
     final start = widget.onStart;
     if (start == null || _running || _starting) return;
 
     setState(() => _starting = true);
     try {
       await start();
-      if (mounted) {
-        setState(() => _running = true);
-      }
+      if (!mounted) return;
+      setState(() {
+        _running = true;
+        _watchingSince = DateTime.now();
+      });
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unable to start recording: $e'),
-          ),
-        );
-      }
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Unable to start recording: $e')));
     } finally {
-      if (mounted) {
-        setState(() => _starting = false);
-      }
+      if (mounted) setState(() => _starting = false);
     }
   }
 
-  Future<void> _confirmResetCamera() async {
-    if (_running) {
-      _showFirstStopRecording();
-      return;
-    }
-
-    final shouldReset = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF161616),
-          titleTextStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-          contentTextStyle: const TextStyle(
-            color: cameraRoleWhite40,
-            fontSize: 14,
-            height: 1.4,
-          ),
-          title: const Text('Reset this camera?'),
-          content: const Text(
-            'This deletes the local camera state from the phone. '
-            'This cannot be undone.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancel'),
+  Future<void> _openSettings() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (_) => CameraRoleSettingsPage(
+              cameraName: widget.cameraName ?? 'This phone',
+              settings: _settings,
+              recording: _running,
+              onSettingsChanged:
+                  (settings) => setState(() => _settings = settings),
+              onStopRecording: widget.onStop,
+              onUnpair: widget.onResetCamera,
+              onSwitchRole: widget.onSwitchRole,
             ),
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: FilledButton.styleFrom(
-                backgroundColor: cameraRoleDanger,
-                foregroundColor: cameraRoleBg,
-              ),
-              child: const Text('Reset'),
-            ),
-          ],
-        );
-      },
+      ),
     );
-
-    if (shouldReset != true || !mounted) return;
-
-    final reset = widget.onResetCamera;
-    if (reset == null) return;
-
-    setState(() => _resetting = true);
-    try {
-      await reset();
-    } finally {
-      if (mounted) {
-        setState(() => _resetting = false);
-      }
-    }
   }
 
-  Future<void> _requestSwitchRole() async {
-    final switchRole = widget.onSwitchRole;
-    if (switchRole == null) return;
-
-    setState(() => _switchingRole = true);
-    try {
-      await switchRole();
-    } finally {
-      if (mounted) {
-        setState(() => _switchingRole = false);
-      }
-    }
+  String get _title {
+    if (!_running) return 'Ready when you are';
+    final name = widget.cameraName;
+    return name == null ? 'On watch' : '$name, on watch';
   }
 
-  Future<void> _confirmStop() async {
-    if (!_running) return;
+  String get _body =>
+      _running
+          ? 'Everything it sees is encrypted right here, then sent to your relay. '
+              'Only your main phone can open it.'
+          : 'Put this phone where it should watch, then start. Everything it '
+              'records is encrypted here before it leaves.';
 
-    final shouldStop = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFF161616),
-          titleTextStyle: const TextStyle(
-            color: Colors.white,
-            fontSize: 18,
-            fontWeight: FontWeight.w600,
-          ),
-          contentTextStyle: const TextStyle(
-            color: cameraRoleWhite40,
-            fontSize: 14,
-            height: 1.4,
-          ),
-          title: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Expanded(child: Text('Stop?')),
-              IconButton(
-                onPressed: () => Navigator.of(dialogContext).pop(false),
-                icon: const Icon(Icons.close_rounded),
-                color: cameraRoleWhite40,
-                iconSize: 20,
-                visualDensity: VisualDensity.compact,
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                tooltip: 'Cancel',
-              ),
-            ],
-          ),
-          content: const Text(
-            'This will stop recording and return to role selection.',
-          ),
-          actions: [
-            FilledButton(
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              style: FilledButton.styleFrom(
-                backgroundColor: cameraRoleDanger,
-                foregroundColor: cameraRoleBg,
-              ),
-              child: const Text('Stop'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (shouldStop != true || !mounted) {
-      return;
-    }
-    await widget.onStop?.call();
-  }
+  String get _footnote =>
+      _running
+          ? 'Leave it plugged in. The screen can go dark, recording keeps going.'
+          : 'Nothing is being recorded right now.';
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: cameraRoleBg,
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final s = cameraRoleFlowScale(constraints);
-            double sz(double v) => v * s;
-            return SingleChildScrollView(
-              padding: EdgeInsets.fromLTRB(sz(24), sz(12), sz(24), sz(24)),
-              child: Column(
-                children: [
-                  Row(
-                    children: [
-                      const Spacer(),
-                      if (_running)
-                        IconButton(
-                          tooltip: 'Stop',
-                          icon: Icon(
-                            Icons.power_settings_new_rounded,
-                            color: cameraRoleDanger,
-                            size: sz(22),
-                          ),
-                          onPressed: _confirmStop,
-                        ),
-                    ],
-                  ),
-                  SizedBox(height: sz(20)),
-                  CameraRoleRingOrb(
-                    scale: s,
-                    icon:
-                        _running
-                            ? Icons.videocam_rounded
-                            : Icons.videocam_off_rounded,
-                    pulse: _running,
-                  ),
-                  SizedBox(height: sz(32)),
-                  CameraRoleFlowHeading(
-                    scale: s,
-                    title: _running ? 'Recording' : 'Camera Ready',
-                    body:
-                        _running
-                            ? 'Camera and microphone are recording,\n'
-                                'If an event is detected, vidoe and audio will be sent encrypted to your relay.'
-                            : 'Recording is stopped. Start when this\n'
-                                'phone is ready to act as a camera.',
-                  ),
-                  SizedBox(height: sz(32)),
-                  if (!_running) ...[
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton.icon(
-                        onPressed: _starting ? null : _startRecording,
-                        icon:
-                            _starting
-                                ? SizedBox(
-                                  width: sz(14),
-                                  height: sz(14),
-                                  child: const CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                                : const Icon(Icons.play_arrow_rounded),
-                        label: Text(_starting ? 'Starting...' : 'Start Recording'),
+      backgroundColor: CamRole.bg,
+      body: DimWhenIdle(
+        enabled: _running && _settings.keepScreenDark,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(24, 8, 24, 26),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _Header(
+                  recording: _running && _settings.showRecLight,
+                  onSettings: _openSettings,
+                ),
+                Expanded(
+                  child: Center(
+                    child: SingleChildScrollView(
+                      child: _Stage(
+                        recording: _running,
+                        title: _title,
+                        body: _body,
                       ),
                     ),
-                    SizedBox(height: sz(16)),
-                  ],
-                  CameraRoleInfoCard(
-                    scale: s,
-                    rows: [
-                      CameraRoleInfoRow(
-                        scale: s,
-                        label: 'Status',
-                        value:
-                            _running
-                                ? 'Recording'
-                                : _starting
-                                    ? 'Starting'
-                                    : 'Stopped',
-                        valueColor: _running ? cameraRoleEmerald : cameraRoleAmber,
-                        leading: cameraRoleDot(
-                          sz(6),
-                          _running ? cameraRoleEmerald : cameraRoleAmber,
-                        ),
-                      ),
-                      CameraRoleInfoRow(
-                        scale: s,
-                        label: 'Encryption',
-                        value: 'E2EE Active',
-                        leading: Icon(
-                          Icons.lock_outline_rounded,
-                          size: sz(11),
-                          color: cameraRoleBlue,
-                        ),
-                      ),
-                      CameraRoleInfoRow(
-                        scale: s,
-                        label: 'Uploaded',
-                        value: '1.2 MB',
-                        mono: true,
-                      ),
-                      CameraRoleInfoRow(
-                        scale: s,
-                        label: 'Pending',
-                        value: '0 segments',
-                        mono: true,
-                        showDivider: false,
-                      ),
-                    ],
                   ),
-                  SizedBox(height: sz(16)),
-                  CameraRoleInfoCard(
-                    scale: s,
-                    rows: [
-                      CameraRoleInfoRow(
-                        scale: s,
-                        label: 'Reset Camera',
-                        value:
-                            _running
-                                ? 'First stop recording'
-                                : _resetting
-                                    ? 'Resetting...'
-                                    : 'Delete state',
-                        valueColor: _running ? cameraRoleAmber : cameraRoleDanger,
-                        leading: Icon(
-                          Icons.restart_alt_rounded,
-                          size: sz(11),
-                          color: _running ? cameraRoleAmber : cameraRoleDanger,
-                        ),
-                        onTap: _resetting ? null : _confirmResetCamera,
-                      ),
-                      CameraRoleInfoRow(
-                        scale: s,
-                        label: 'Switch Role',
-                        value: _switchingRole ? 'Checking...' : 'Requires reset',
-                        leading: Icon(
-                          Icons.swap_horiz_rounded,
-                          size: sz(11),
-                          color: cameraRoleBlue,
-                        ),
-                        onTap: _switchingRole ? null : _requestSwitchRole,
-                        showDivider: false,
-                      ),
-                    ],
+                ),
+                if (!_running) ...[
+                  EditorialButton(
+                    label: _starting ? 'Starting...' : 'Start recording',
+                    onPressed: _starting ? null : _start,
+                    primary: true,
                   ),
-                  SizedBox(height: sz(16)),
-                  CameraRoleTintedCard(
-                    scale: s,
-                    accent: _running ? cameraRoleEmerald : cameraRoleBlue,
-                    icon:
-                        _running
-                            ? Icons.battery_charging_full_rounded
-                            : Icons.play_circle_outline_rounded,
-                    title: _running ? 'Leave it plugged in' : 'Ready to record',
-                    body:
-                        _running
-                            ? 'The screen can stay dark. Secluso keeps recording in the background.'
-                            : 'Press Start Recording when you want this phone to begin recording.',
-                  ),
+                  const SizedBox(height: 22),
                 ],
-              ),
-            );
-          },
+                StatRows(
+                  children: [
+                    StatRow(
+                      label: 'Status',
+                      value: _statusLabel,
+                      valueColor: _statusColor,
+                      dotColor: _statusColor,
+                    ),
+                    StatRow(
+                      label: 'Watching since',
+                      value: _formatSince(_watchingSince),
+                    ),
+                    // Placeholders
+                    StatRow(
+                      label: 'Sent to relay',
+                      value: _watchingSince == null ? '—' : '1.2 MB',
+                    ),
+                    StatRow(
+                      label: 'Waiting to send',
+                      value: _watchingSince == null ? '—' : '0 clips',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                EditorialFootnote(_footnote),
+              ],
+            ),
+          ),
         ),
       ),
+    );
+  }
+
+  String get _statusLabel {
+    if (_running) return 'Recording';
+    return _starting ? 'Starting' : 'Stopped';
+  }
+
+  Color get _statusColor => _running ? CamRole.success : CamRole.warning;
+
+  static String _formatSince(DateTime? time) {
+    if (time == null) return 'Not started';
+    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final hour = time.hour % 12 == 0 ? 12 : time.hour % 12;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.hour < 12 ? 'AM' : 'PM';
+    return '${days[time.weekday - 1]} $hour:$minute $period';
+  }
+}
+
+class _Header extends StatelessWidget {
+  const _Header({required this.recording, required this.onSettings});
+
+  final bool recording;
+  final VoidCallback onSettings;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        if (recording) const _RecLight() else const SizedBox.shrink(),
+        const Spacer(),
+        IconButton(
+          onPressed: onSettings,
+          icon: const Icon(Icons.settings_outlined),
+          color: CamRole.dim(0.52),
+          iconSize: 21,
+          tooltip: 'Camera settings',
+        ),
+      ],
+    );
+  }
+}
+
+/// The small breathing REC indicator.
+class _RecLight extends StatefulWidget {
+  const _RecLight();
+
+  @override
+  State<_RecLight> createState() => _RecLightState();
+}
+
+class _RecLightState extends State<_RecLight>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 2200),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.of(context).disableAnimations;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        still
+            ? const _Dot(opacity: 0.7)
+            : AnimatedBuilder(
+              animation: _c,
+              builder: (context, _) => _Dot(opacity: 1 - _c.value * 0.78),
+            ),
+        const SizedBox(width: 8),
+        Text(
+          'REC',
+          style: CamRoleText.eyebrow.copyWith(
+            color: CamRole.danger,
+            fontSize: 11,
+            letterSpacing: 11 * 0.22,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _Dot extends StatelessWidget {
+  const _Dot({required this.opacity});
+
+  final double opacity;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: 7,
+    height: 7,
+    decoration: BoxDecoration(
+      color: CamRole.danger.withValues(alpha: opacity),
+      shape: BoxShape.circle,
+    ),
+  );
+}
+
+/// The mark and the copy that explains what this phone is doing.
+class _Stage extends StatelessWidget {
+  const _Stage({
+    required this.recording,
+    required this.title,
+    required this.body,
+  });
+
+  final bool recording;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          width: 210,
+          height: 138,
+          child: CameraKeeperMark(recording: recording),
+        ),
+        const SizedBox(height: 18),
+        Text('THIS PHONE IS A CAMERA', style: CamRoleText.eyebrow),
+        const SizedBox(height: 8),
+        Text(title, textAlign: TextAlign.center, style: CamRoleText.display),
+        const SizedBox(height: 12),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 300),
+          child: Text(
+            body,
+            textAlign: TextAlign.center,
+            style: CamRoleText.bodyTight,
+          ),
+        ),
+      ],
     );
   }
 }

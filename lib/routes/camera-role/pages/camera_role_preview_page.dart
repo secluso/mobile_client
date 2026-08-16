@@ -115,7 +115,7 @@ class _CameraRolePreviewPageState extends State<CameraRolePreviewPage>
                     _error ?? label,
                     textAlign: TextAlign.center,
                     style: GoogleFonts.inter(
-                      color: _error == null ? Colors.white : cameraRoleDanger,
+                      color: _error == null ? Colors.white : CamRole.danger,
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
                     ),
