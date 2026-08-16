@@ -20,6 +20,9 @@ import 'package:secluso_flutter/utilities/logger.dart';
 import 'home_page.dart';
 import 'package:secluso_flutter/utilities/firebase_init.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
+import 'package:secluso_flutter/utilities/server_backend.dart';
+import 'package:secluso_flutter/utilities/enterprise_session.dart';
+import 'package:secluso_flutter/routes/system/relay_account_page.dart';
 import 'package:secluso_flutter/routes/system/account_page.dart';
 import 'package:secluso_flutter/routes/system/camera_plan_page.dart';
 import 'package:secluso_flutter/routes/system/plans_page.dart';
@@ -46,13 +49,36 @@ class UserCredentialsQrPayload {
   final String? reviewRelayId;
   final String? reviewRelayLabel;
 
+  /// When these credentials came from the account login page
+  final bool isAccountLogin;
+
+  /// Which of the account's subscriptions this device works under.
+  final String? subscriptionUuid;
+
   UserCredentialsQrPayload({
     required this.serverUsername,
     required this.serverPassword,
     required this.serverAddress,
     this.reviewRelayId,
     this.reviewRelayLabel,
+    this.isAccountLogin = false,
+    this.subscriptionUuid,
   });
+
+  factory UserCredentialsQrPayload.accountLogin({
+    required String serverUsername,
+    required String serverPassword,
+    required String serverAddress,
+    String? subscriptionUuid,
+  }) {
+    return UserCredentialsQrPayload(
+      serverUsername: serverUsername,
+      serverPassword: serverPassword,
+      serverAddress: serverAddress,
+      isAccountLogin: true,
+      subscriptionUuid: subscriptionUuid,
+    );
+  }
 
   factory UserCredentialsQrPayload.review({
     required String relayId,
@@ -72,6 +98,9 @@ class UserCredentialsQrPayload {
 }
 
 const String _officialRelayConnectionKind = 'official';
+
+/// Where the official relay is (not self hosted)
+const String _officialRelayAddress = 'https://relay.secluso.net';
 const String _selfHostedRelayConnectionKind = 'self_hosted';
 
 class ServerPage extends StatefulWidget {
@@ -106,6 +135,8 @@ class _ServerPageState extends State<ServerPage> {
   bool hasSynced = false;
   final ValueNotifier<bool> _isDialogOpen = ValueNotifier(false);
   bool _didAutoOpenRelayScan = false;
+
+  bool _relayAuthInFlight = false;
   int _lastHandledRelayScanRequestId = -1;
   String? _pendingRelayConnectionKind;
 
@@ -143,6 +174,9 @@ class _ServerPageState extends State<ServerPage> {
     }
     _didAutoOpenRelayScan = true;
     _lastHandledRelayScanRequestId = widget.relayScanRequestId;
+    if (!_isPreviewMode) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || hasSynced) return;
       unawaited(_openRelayScanFlow());
@@ -277,8 +311,10 @@ class _ServerPageState extends State<ServerPage> {
       }
 
       // TODO: Check how this handles on failure... bad QR code
-      if (credentialsFull.serverUsername.length != Constants.usernameLength ||
-          credentialsFull.serverPassword.length != Constants.passwordLength) {
+      if (!credentialsFull.isAccountLogin &&
+          (credentialsFull.serverUsername.length != Constants.usernameLength ||
+              credentialsFull.serverPassword.length !=
+                  Constants.passwordLength)) {
         Log.e(
           "Server Page Save: User credentials should be more than 28 characters.",
         );
@@ -343,15 +379,26 @@ class _ServerPageState extends State<ServerPage> {
               serverAddr: normalizedServerAddr,
               username: serverUsername,
               password: serverPassword,
+              // The backend pref isn't written until the save below
+              backend:
+                  credentialsFull.isAccountLogin
+                      ? ServerBackend.enterprise
+                      : ServerBackend.selfHosted,
             );
-        if (fetched.isFailure || fetched.value == null) {
+        final fetchedError = fetched.error?.toString() ?? '';
+        if (fetched.isFailure &&
+            credentialsFull.isAccountLogin &&
+            fetchedError.contains('404')) {
+          // The official relay may not have FCM configured yet..
+          // that shouldn't hold the account hostage.
+          Log.w('Relay has no FCM config; connecting without push for now');
+        } else if (fetched.isFailure || fetched.value == null) {
           setState(() {
             serverAddr = prevServerAddr;
             hasSynced = prevHasSynced;
             _ipController.text = prevServerAddr ?? '';
           });
 
-          final fetchedError = fetched.error?.toString() ?? '';
           final failureMessage =
               fetchedError.contains('401 Unauthorized') ||
                       fetchedError.contains('Failed to fetch fcm config: 401')
@@ -369,9 +416,9 @@ class _ServerPageState extends State<ServerPage> {
             ),
           );
           return;
+        } else {
+          fetchedFcmConfig = fetched.value;
         }
-
-        fetchedFcmConfig = fetched.value;
       }
       if (Platform.isAndroid &&
           AndroidPushTransport.isUnifiedValue(androidPushPlatform)) {
@@ -383,7 +430,22 @@ class _ServerPageState extends State<ServerPage> {
       await prefs.setString(PrefKeys.serverAddr, normalizedServerAddr);
       await prefs.setString(PrefKeys.serverUsername, serverUsername);
       await prefs.setString(PrefKeys.serverPassword, serverPassword);
+      if (credentialsFull.subscriptionUuid != null) {
+        await prefs.setString(
+          PrefKeys.subscriptionUuid,
+          credentialsFull.subscriptionUuid!,
+        );
+      } else {
+        // A different relay, or one that doesn't do subscriptions.
+        await prefs.remove(PrefKeys.subscriptionUuid);
+      }
       await prefs.setString(PrefKeys.relayConnectionKind, relayConnectionKind);
+      // Which DS the credentials correspond to is needed for the Rust side to know which auth scheme to use.
+      await HttpClientService.instance.setServerBackend(
+        credentialsFull.isAccountLogin
+            ? ServerBackend.enterprise
+            : ServerBackend.selfHosted,
+      );
       if (Platform.isAndroid) {
         await prefs.setString(
           PrefKeys.androidPushPlatform,
@@ -405,10 +467,11 @@ class _ServerPageState extends State<ServerPage> {
       HttpClientService.instance.resetVersionGateState();
 
       if (Platform.isAndroid &&
-          !AndroidPushTransport.isUnifiedValue(androidPushPlatform)) {
+          !AndroidPushTransport.isUnifiedValue(androidPushPlatform) &&
+          fetchedFcmConfig != null) {
         await prefs.setString(
           PrefKeys.fcmConfigJson,
-          jsonEncode(fetchedFcmConfig!.toJson()),
+          jsonEncode(fetchedFcmConfig.toJson()),
         );
       } else {
         await prefs.remove(PrefKeys.fcmConfigJson);
@@ -440,8 +503,10 @@ class _ServerPageState extends State<ServerPage> {
           await UnifiedPushService.instance.deactivate();
           bool firebaseReady = false;
           try {
-            await FirebaseInit.ensure(fetchedFcmConfig!);
-            firebaseReady = true;
+            if (fetchedFcmConfig != null) {
+              await FirebaseInit.ensure(fetchedFcmConfig);
+              firebaseReady = true;
+            }
           } catch (e, st) {
             Log.e("Firebase init failed: $e\n$st");
           }
@@ -464,13 +529,20 @@ class _ServerPageState extends State<ServerPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("Server settings saved!")));
+
+      // A first connection's next step is adding a camera
+      if (!prevHasSynced) {
+        CameraUiBridge.switchShellTabCallback?.call(0);
+      }
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: Colors.red,
           content: Text(
-            "Potentially invalid QR code. Please try again",
+            credentialsFull.isAccountLogin
+                ? "Could not finish setting up the relay. Please try again"
+                : "Potentially invalid QR code. Please try again",
             style: TextStyle(color: Colors.white),
           ),
         ),
@@ -786,6 +858,175 @@ class _ServerPageState extends State<ServerPage> {
     ).showSnackBar(const SnackBar(content: Text('Review environment reset.')));
   }
 
+  /// The official relay supports account creation and login
+  /// Self-hosted relays are expected to be pre-provisioned with credentials (so QR is used)
+  Future<void> _openRelayLoginFlow() async {
+    _pendingRelayConnectionKind = _officialRelayConnectionKind;
+    final credentialsFull = await Navigator.push<UserCredentialsQrPayload?>(
+      context,
+      MaterialPageRoute(
+        builder:
+            (pageContext) => RelayAccountPage(
+              onCreateAccount:
+                  () => _pushRelaySignUp(pageContext, AuthMode.create),
+              onSignIn: () => _pushRelaySignUp(pageContext, AuthMode.signIn),
+            ),
+      ),
+    );
+    if (credentialsFull == null || !mounted) {
+      _pendingRelayConnectionKind = null;
+      return;
+    }
+    await _saveServerSettings(credentialsFull);
+  }
+
+  Future<void> _pushRelaySignUp(BuildContext pageContext, AuthMode mode) async {
+    final payload = await Navigator.push<UserCredentialsQrPayload?>(
+      pageContext,
+      MaterialPageRoute(
+        builder:
+            (formContext) => RelaySignUpPage(
+              initialMode: mode,
+              onSubmit:
+                  (mode, email, password) =>
+                      _verifyRelayAccount(formContext, mode, email, password),
+            ),
+      ),
+    );
+    // The form verified the credentials; hand them up through the intro page too.
+    if (payload != null && pageContext.mounted) {
+      Navigator.of(pageContext).pop(payload);
+    }
+  }
+
+  Future<void> _verifyRelayAccount(
+    BuildContext formContext,
+    AuthMode mode,
+    String email,
+    String password,
+  ) async {
+    final username = email.trim();
+
+    String? complaint;
+    if (username.isEmpty || password.isEmpty) {
+      complaint = 'Enter an email and a password.';
+    } else if (mode == AuthMode.create &&
+        !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(username)) {
+      // The relay stores this as an opaque username
+      // Form mentions an email.
+      // TODO: Not sure what we should do.
+      complaint = 'Enter a real email address.';
+    } else if (mode == AuthMode.create && password.length < 12) {
+      complaint = 'Passwords need at least 12 characters.';
+    } else if (mode == AuthMode.create &&
+        !(password.contains(RegExp(r'[A-Za-z]')) &&
+            password.contains(RegExp(r'[0-9]')) &&
+            password.contains(RegExp(r'[^A-Za-z0-9\s]')))) {
+      complaint = 'Passwords need a letter, a number, and a symbol.';
+    }
+    if (complaint != null) {
+      ScaffoldMessenger.of(
+        formContext,
+      ).showSnackBar(SnackBar(content: Text(complaint)));
+      return;
+    }
+
+    if (_relayAuthInFlight) {
+      return;
+    }
+    _relayAuthInFlight = true;
+
+    // The form's button has no busy state of its own, so a barrier stands in.
+    unawaited(
+      showDialog<void>(
+        context: formContext,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      ),
+    );
+
+    String? subscriptionUuid;
+    final session = EnterpriseSession();
+    try {
+      if (mode == AuthMode.create) {
+        await session.registerStrict(
+          serverAddr: _officialRelayAddress,
+          username: username,
+          password: password,
+        );
+
+        try {
+          subscriptionUuid = await session.claimFreeTier(
+            serverAddr: _officialRelayAddress,
+            username: username,
+            password: password,
+          );
+        } catch (e) {
+          Log.w('Free tier claim after signup did not take: $e');
+        }
+      } else {
+        final token = await session.accessToken(
+          serverAddr: _officialRelayAddress,
+          username: username,
+          password: password,
+        );
+        final subs = EnterpriseSession.subsFromToken(token);
+        if (subs.isNotEmpty) {
+          // One subscription picks itself.
+          subscriptionUuid = subs.first['uuid'] as String?;
+          if (subs.length > 1) {
+            Log.w(
+              'Account holds ${subs.length} subscriptions; using the first',
+            );
+          }
+        }
+      }
+    } catch (e) {
+      Log.w(
+        'Relay account ${mode == AuthMode.create ? 'signup' : 'login'} failed: $e',
+      );
+      if (!formContext.mounted) return;
+      ScaffoldMessenger.of(
+        formContext,
+      ).showSnackBar(SnackBar(content: Text(_relayAuthError(e.toString()))));
+      return;
+    } finally {
+      _relayAuthInFlight = false;
+      if (formContext.mounted) {
+        Navigator.of(formContext, rootNavigator: true).pop();
+      }
+    }
+
+    if (!formContext.mounted) return;
+    Navigator.of(formContext).pop(
+      UserCredentialsQrPayload.accountLogin(
+        serverUsername: username,
+        serverPassword: password,
+        serverAddress: _officialRelayAddress,
+        subscriptionUuid: subscriptionUuid,
+      ),
+    );
+  }
+
+  String _relayAuthError(String raw) {
+    if (raw.contains('401')) {
+      return 'Wrong email or password.';
+    }
+    if (raw.contains('409')) {
+      return 'That email already has an account. Try signing in.';
+    }
+    if (raw.contains('400')) {
+      if (raw.contains('username')) {
+        return 'That email has characters the relay does not accept.';
+      }
+      if (raw.contains('password')) {
+        return 'Passwords need a letter, a number, and a symbol.';
+      }
+      return 'The relay rejected those credentials.';
+    }
+    return 'Could not reach the relay. Check your connection and try again.';
+  }
+
   Future<void> _openRelayScanFlow({
     String relayConnectionKind = _officialRelayConnectionKind,
   }) async {
@@ -920,6 +1161,21 @@ class _ServerPageState extends State<ServerPage> {
             ),
           ),
           const SizedBox(height: 16),
+          // The relay without a camera does nothing; point at the next step until the first one is paired.
+          if (_cameraNames.isEmpty) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.videocam_rounded, size: 20),
+                label: const Text('Add your first camera'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () => CameraUiBridge.switchShellTabCallback?.call(0),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               Expanded(
@@ -971,13 +1227,10 @@ class _ServerPageState extends State<ServerPage> {
               _setupOptionCard(
                 theme,
                 title: 'Secluso Relay',
-                subtitle: 'Scan the QR code from your Secluso account',
-                icon: Icons.qr_code_2_rounded,
+                subtitle: 'Sign in with your Secluso account',
+                icon: Icons.person_rounded,
                 highlighted: true,
-                onTap:
-                    () => _openRelayScanFlow(
-                      relayConnectionKind: _officialRelayConnectionKind,
-                    ),
+                onTap: _openRelayLoginFlow,
               ),
               const SizedBox(height: 14),
               _setupOptionCard(
@@ -1255,12 +1508,7 @@ class _ServerPageState extends State<ServerPage> {
         backgroundColor: SystemPalette.of(context).bg,
         safeTop: true,
         body: RelayChoicePage(
-          onSeclusoRelay:
-              () => unawaited(
-                _openRelayScanFlow(
-                  relayConnectionKind: _officialRelayConnectionKind,
-                ),
-              ),
+          onSeclusoRelay: () => unawaited(_openRelayLoginFlow()),
           onSelfHosted:
               () => unawaited(
                 _openRelayScanFlow(

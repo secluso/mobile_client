@@ -334,8 +334,9 @@ class _LivestreamPageState extends State<LivestreamPage>
       if (res == true) {
         return true;
       }
-      if (++attempt > 5) {
-        _fail('Could not retrieve commit message after 5 retries');
+      // The camera needs a moment to notice the request, commit, and upload chunk 0
+      if (++attempt > 15) {
+        _fail('Could not retrieve commit message after 15 retries');
         return false;
       }
       await Future.delayed(const Duration(seconds: 1));

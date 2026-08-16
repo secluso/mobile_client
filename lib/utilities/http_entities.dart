@@ -6,11 +6,15 @@ class MotionPair {
   String groupName;
   int epochToCheck;
 
-  MotionPair(this.groupName, this.epochToCheck);
+  /// The hashed object name for the enterprise delivery service.
+  String? filename;
+
+  MotionPair(this.groupName, this.epochToCheck, {this.filename});
 
   Map<String, dynamic> toJson() => {
     'group_name': groupName,
     'epoch_to_check': epochToCheck,
+    if (filename != null) 'filename': filename,
   };
 }
 

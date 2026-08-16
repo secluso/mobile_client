@@ -55,6 +55,7 @@ Future<String> flutterAddCamera({
   required String pairingToken,
   required String credentialsFull,
   required bool android,
+  required String subscriptionUuid,
 }) => RustLib.instance.api.crateApiFlutterAddCamera(
   cameraName: cameraName,
   ip: ip,
@@ -65,6 +66,7 @@ Future<String> flutterAddCamera({
   pairingToken: pairingToken,
   credentialsFull: credentialsFull,
   android: android,
+  subscriptionUuid: subscriptionUuid,
 );
 
 Future<void> shutdownApp() => RustLib.instance.api.crateApiShutdownApp();
@@ -96,6 +98,25 @@ Future<String> getGroupName({
 }) => RustLib.instance.api.crateApiGetGroupName(
   clientTag: clientTag,
   cameraName: cameraName,
+);
+
+/// The name an object is stored under on the enterprise delivery service.
+/// The subscription the paired camera bills against saved during pairing/add-app.
+Future<String> subscriptionUuidFor({required String cameraName}) =>
+    RustLib.instance.api.crateApiSubscriptionUuidFor(cameraName: cameraName);
+
+Future<String> objectNameFor({
+  required String cameraName,
+  required String clientTag,
+  required String groupName,
+  required BigInt epoch,
+  required String kind,
+}) => RustLib.instance.api.crateApiObjectNameFor(
+  cameraName: cameraName,
+  clientTag: clientTag,
+  groupName: groupName,
+  epoch: epoch,
+  kind: kind,
 );
 
 Future<bool> livestreamUpdate({

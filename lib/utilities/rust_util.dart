@@ -1,6 +1,7 @@
 //! SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -75,8 +76,16 @@ Future<String> addCamera(
     ssid: ssid,
     password: password,
     pairingToken: pairingToken,
-    credentialsFull: serverUsername + serverPassword + serverAddress,
+    credentialsFull: jsonEncode({
+      'v': 'uc-v1.0',
+      'u': serverUsername,
+      'p': serverPassword,
+      'sa': serverAddress,
+      'b': prefs.getString(PrefKeys.serverBackend) ?? 'self_hosted',
+    }),
     android: android,
+    // The subscription this camera will bill against
+    subscriptionUuid: prefs.getString(PrefKeys.subscriptionUuid) ?? '',
   );
 }
 

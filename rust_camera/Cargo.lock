@@ -51,7 +51,7 @@ checksum = "b169f7a6d4742236a0a00c541b845991d0ac43e546831af1249753ab4c3aa3a0"
 dependencies = [
  "cfg-if",
  "cipher",
- "cpufeatures",
+ "cpufeatures 0.2.17",
 ]
 
 [[package]]
@@ -213,6 +213,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "arrayref"
+version = "0.3.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76a2e8124351fda1ef8aaaa3bbd7ebbcb486bbcd4225aca0aa0d84bb2db8fecb"
 
 [[package]]
 name = "arrayvec"
@@ -391,6 +397,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "blake3"
+version = "1.8.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "76ae7bad254120e9e4c63bafc385310756f90c484eac0e36b8317cf09cb92a77"
+dependencies = [
+ "arrayref",
+ "arrayvec",
+ "cc",
+ "cfg-if",
+ "constant_time_eq",
+ "cpufeatures 0.3.0",
+]
+
+[[package]]
 name = "block-buffer"
 version = "0.10.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -473,7 +493,7 @@ checksum = "c3613f74bd2eac03dad61bd53dbe620703d4371614fe0bc3b9f04dd36fe4e818"
 dependencies = [
  "cfg-if",
  "cipher",
- "cpufeatures",
+ "cpufeatures 0.2.17",
 ]
 
 [[package]]
@@ -571,6 +591,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
+name = "constant_time_eq"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d52eff69cd5e647efe296129160853a42795992097e8af39800e1060caeea9b"
+
+[[package]]
 name = "core-foundation"
 version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -602,6 +628,15 @@ name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
+dependencies = [
+ "libc",
+]
+
+[[package]]
+name = "cpufeatures"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b2a41393f66f16b0823bb79094d54ac5fbd34ab292ddafb9a0456ac9f87d201"
 dependencies = [
  "libc",
 ]
@@ -694,7 +729,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97fb8b7c4503de7d6ae7b42ab72a5a59857b4c937ec27a3d4539dba95b5ab2be"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "curve25519-dalek-derive",
  "digest",
  "fiat-crypto",
@@ -2890,7 +2925,7 @@ version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8159bd90725d2df49889a078b54f4f79e87f1f8a8444194cdca81d38f5393abf"
 dependencies = [
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "opaque-debug",
  "universal-hash",
 ]
@@ -2902,7 +2937,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d1fe60d06143b2430aa532c94cfe9e29783047f06c0d7fd359a9a51b729fa25"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "opaque-debug",
  "universal-hash",
 ]
@@ -3338,6 +3373,8 @@ dependencies = [
  "rustls",
  "rustls-pki-types",
  "rustls-platform-verifier",
+ "serde",
+ "serde_json",
  "sync_wrapper",
  "tokio",
  "tokio-rustls",
@@ -3387,10 +3424,13 @@ dependencies = [
  "android_logger",
  "flutter_rust_bridge",
  "fs2",
+ "jni",
  "libc",
  "log",
  "once_cell",
  "parking_lot",
+ "rustls",
+ "rustls-platform-verifier",
  "secluso-camera-hub",
  "simplelog",
  "time",
@@ -3426,6 +3466,7 @@ checksum = "6b92b125634d9b795e7beca796cc790df15a7fb38323bf3196fda83292d06b1f"
 dependencies = [
  "aws-lc-rs",
  "once_cell",
+ "ring",
  "rustls-pki-types",
  "rustls-webpki",
  "subtle",
@@ -3559,7 +3600,6 @@ dependencies = [
 [[package]]
 name = "secluso-camera-hub"
 version = "1.0.2"
-source = "git+https://github.com/secluso/core?rev=ba6141d38a7f82ce5d6e0ddccb64e93b9b1679ba#ba6141d38a7f82ce5d6e0ddccb64e93b9b1679ba"
 dependencies = [
  "anyhow",
  "bincode",
@@ -3586,12 +3626,12 @@ dependencies = [
 [[package]]
 name = "secluso-client-lib"
 version = "1.0.2"
-source = "git+https://github.com/secluso/core?rev=ba6141d38a7f82ce5d6e0ddccb64e93b9b1679ba#ba6141d38a7f82ce5d6e0ddccb64e93b9b1679ba"
 dependencies = [
  "anyhow",
  "base64",
  "base64-url",
  "bincode",
+ "blake3",
  "log",
  "openmls",
  "openmls_basic_credential",
@@ -3601,15 +3641,17 @@ dependencies = [
  "openmls_traits",
  "rand 0.9.4",
  "reqwest",
+ "rustls",
+ "secluso-client-server-lib",
  "serde",
  "serde_derive",
  "serde_json",
+ "webpki-roots 0.26.11",
 ]
 
 [[package]]
 name = "secluso-client-server-lib"
 version = "1.0.2"
-source = "git+https://github.com/secluso/core?rev=ba6141d38a7f82ce5d6e0ddccb64e93b9b1679ba#ba6141d38a7f82ce5d6e0ddccb64e93b9b1679ba"
 dependencies = [
  "anyhow",
  "rand 0.9.4",
@@ -3620,7 +3662,6 @@ dependencies = [
 [[package]]
 name = "secluso-motion-ai"
 version = "1.0.2"
-source = "git+https://github.com/secluso/core?rev=ba6141d38a7f82ce5d6e0ddccb64e93b9b1679ba#ba6141d38a7f82ce5d6e0ddccb64e93b9b1679ba"
 dependencies = [
  "anyhow",
  "chrono",
@@ -3746,7 +3787,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7507d819769d01a365ab707794a4084392c824f54a7a6a7862f8c3d0892b283"
 dependencies = [
  "cfg-if",
- "cpufeatures",
+ "cpufeatures 0.2.17",
  "digest",
 ]
 
@@ -4444,6 +4485,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.9",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7dcd9d09a39985f5344844e66b0c530a33843579125f23e21e9f0f220850f22a"
+dependencies = [
+ "rustls-pki-types",
+]
+
+[[package]]
 name = "weezl"
 version = "0.1.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4952,3 +5011,7 @@ checksum = "27bc9d5b815bc103f142aa054f561d9187d191692ec7c2d1e2b4737f8dbd7296"
 dependencies = [
  "zune-core",
 ]
+
+[[patch.unused]]
+name = "secluso-app-native"
+version = "1.0.2"

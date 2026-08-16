@@ -60,16 +60,14 @@ class AndroidCameraSpec {
   factory AndroidCameraSpec.fromJson(Map<String, Object?> json) {
     return AndroidCameraSpec(
       facing: json['facing'] as int,
-      resolutions:
-          (json['resolutions'] as List<Object?>)
-              .map((item) => Map<String, Object?>.from(item as Map))
-              .map(AndroidCameraResolution.fromJson)
-              .toList(growable: false),
-      frameRateRanges:
-          (json['frame_rate_ranges'] as List<Object?>)
-              .map((item) => Map<String, Object?>.from(item as Map))
-              .map(AndroidCameraFrameRateRange.fromJson)
-              .toList(growable: false),
+      resolutions: (json['resolutions'] as List<Object?>)
+          .map((item) => Map<String, Object?>.from(item as Map))
+          .map(AndroidCameraResolution.fromJson)
+          .toList(growable: false),
+      frameRateRanges: (json['frame_rate_ranges'] as List<Object?>)
+          .map((item) => Map<String, Object?>.from(item as Map))
+          .map(AndroidCameraFrameRateRange.fromJson)
+          .toList(growable: false),
     );
   }
 
@@ -210,10 +208,11 @@ class AndroidCameraHubLauncher {
     await RustCameraLibGuard.initOnce();
 
     await rust_camera_api.startAndroidCameraHub(
-        workDir: dir.path,
-        serverUsername: serverUsername,
-        serverPassword: serverPassword,
-        serverAddr: serverAddr,
+      workDir: dir.path,
+      serverUsername: serverUsername,
+      serverPassword: serverPassword,
+      serverAddr: serverAddr,
+      serverBackend: prefs.getString(PrefKeys.serverBackend) ?? 'self_hosted',
     );
   }
 
@@ -227,9 +226,21 @@ class AndroidCameraHubLauncher {
   }
 
   static Future<String> startHubAndWaitForQrPayload() async {
-    await startHub();
-
+    // We delete any stale QR payloads before starting the hub, to avoid returning an old one.
     final dir = await workDir();
+    if (await dir.exists()) {
+      final stale = dir
+          .listSync(recursive: true, followLinks: false)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('_secret_qrcode_payload.json'));
+      for (final file in stale) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+    }
+
+    await startHub();
     final payload = await _waitForQrPayload(dir);
     if (payload == null || payload.trim().isEmpty) {
       throw StateError(
@@ -265,10 +276,11 @@ class AndroidCameraHubLauncher {
     await RustCameraLibGuard.initOnce();
 
     await rust_camera_api.resetAndroidCameraHub(
-	workDir: dir.path,
-        serverUsername: serverUsername,
-        serverPassword: serverPassword,
-        serverAddr: serverAddr,
+      workDir: dir.path,
+      serverUsername: serverUsername,
+      serverPassword: serverPassword,
+      serverAddr: serverAddr,
+      serverBackend: prefs.getString(PrefKeys.serverBackend) ?? 'self_hosted',
     );
 
     // We do this just to be sure. Otherwise, the Rust reset should delete this.
@@ -295,7 +307,9 @@ class AndroidCameraHubLauncher {
           dir
               .listSync(recursive: true, followLinks: false)
               .whereType<File>()
-              .where((file) => file.path.endsWith('_secret_qrcode_payload.json'))
+              .where(
+                (file) => file.path.endsWith('_secret_qrcode_payload.json'),
+              )
               .toList();
 
       if (files.isNotEmpty) {

@@ -21,6 +21,8 @@ class PrefKeys {
   static const serverAddr = "server_addr";
   static const serverUsername = "server_username";
   static const serverPassword = "server_password";
+  static const serverBackend = "server_backend";
+  static const subscriptionUuid = "subscription_uuid";
   static const deviceRole = "device_role";
   static const walkthroughSeen = "walkthrough_seen";
   static const relayConnectionKind = "relay_connection_kind";

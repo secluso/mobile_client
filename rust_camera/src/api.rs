@@ -4,7 +4,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, OnceLock};
-//use std::sync::Once;
+use std::sync::Once;
 use std::thread::{self, JoinHandle};
 
 //static INIT_LOGGER: Once = Once::new();
@@ -21,7 +21,7 @@ fn init_logger() {
         android_logger::init_once(
             android_logger::Config::default()
                 .with_tag("SeclusoRustCamera")
-                .with_max_level(log::LevelFilter::Info),
+                .with_max_level(log::LevelFilter::Debug),
         );
     });
 }
@@ -80,12 +80,32 @@ pub fn set_android_camera_settings(
 }
 
 #[flutter_rust_bridge::frb]
+/// Logging and a panic hook for the hub. 
+fn init_hub_diagnostics() {
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        android_logger::init_once(
+            android_logger::Config::default()
+                .with_tag("SeclusoRustCamera")
+                .with_max_level(log::LevelFilter::Debug),
+        );
+        std::panic::set_hook(Box::new(|info| {
+            log::error!("rust panic: {info}");
+        }));
+        // Must happen before the first TLS connection anywhere in the process.
+        let _ = rustls::crypto::ring::default_provider().install_default();
+    });
+}
+
 pub fn start_android_camera_hub(
     work_dir: String,
     server_username: String,
     server_password: String,
     server_addr: String,
+    server_backend: String,
 ) -> Result<(), String> {
+    init_hub_diagnostics();
+
     //init_logger();
 
     log::info!("start_android_camera_hub called");
@@ -113,6 +133,7 @@ pub fn start_android_camera_hub(
                 server_username,
                 server_password,
                 server_addr,
+                server_backend,
             ) {
                 log::error!("camera hub exited with error: {e}");
             }
@@ -172,6 +193,7 @@ pub fn reset_android_camera_hub(
     server_username: String,
     server_password: String,
     server_addr: String,
+    server_backend: String,
 ) -> Result<(), String> {
     //init_logger();
 
@@ -190,6 +212,7 @@ pub fn reset_android_camera_hub(
         server_username,
         server_password,
         server_addr,
+        server_backend,
     )
     .map_err(|e| format!("failed to reset android camera hub state: {e}"));
 

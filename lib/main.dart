@@ -353,8 +353,8 @@ Future<void> _initializeApp(ThemeProvider themeProvider) async {
     if (Platform.isAndroid && !useUnifiedPush) {
       final fcmConfig = FcmConfig.fromPrefs(prefs);
       if (fcmConfig == null) {
-        Log.e("Missing cached FCM config; clearing server credentials");
-        await _invalidateServerCredentials(prefs);
+        // Legitimate on the official relay until it has FCM configured
+        Log.w("No cached FCM config; skipping Firebase init");
       } else {
         try {
           await FirebaseInit.ensure(fcmConfig);
@@ -1010,7 +1010,9 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
       return;
     }
 
-    if (hasRelay || role == DeviceRoleController.viewerRole || !cameraRoleSupported) {
+    if (hasRelay ||
+        role == DeviceRoleController.viewerRole ||
+        !cameraRoleSupported) {
       _show(const AppShell());
       return;
     }
@@ -1029,17 +1031,19 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
   );
 
   Widget _pairingPage() => CameraRolePairingPage(
-    onConnected: (isRunning) => _show(_recordingPage(initialRunning: isRunning)),
+    onConnected:
+        (isRunning) => _show(_recordingPage(initialRunning: isRunning)),
     onClose: _returnToRoleSelect,
   );
 
-  Widget _recordingPage({bool initialRunning = false}) => CameraRoleRecordingPage(
-    initialRunning: initialRunning,
-    onStart: _startCameraRecording,
-    onStop: _stopCameraAndReturnToRoleSelect,
-    onResetCamera: _resetCameraAndReturnToPairing,
-    onSwitchRole: _switchFromCameraRole,
-  );
+  Widget _recordingPage({bool initialRunning = false}) =>
+      CameraRoleRecordingPage(
+        initialRunning: initialRunning,
+        onStart: _startCameraRecording,
+        onStop: _stopCameraAndReturnToRoleSelect,
+        onResetCamera: _resetCameraAndReturnToPairing,
+        onSwitchRole: _switchFromCameraRole,
+      );
 
   Future<void> _returnToRoleSelect() async {
     await DeviceRoleController.clearRole();
@@ -1058,9 +1062,7 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
               SizedBox(
                 width: 48,
                 height: 48,
-                child: CircularProgressIndicator(
-                  strokeWidth: 3,
-                ),
+                child: CircularProgressIndicator(strokeWidth: 3),
               ),
               SizedBox(height: 24),
               Text(
@@ -1106,11 +1108,9 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
       _show(_recordingPage(initialRunning: true));
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Unable to stop camera: $e'),
-          ),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Unable to stop camera: $e')));
       });
     }
   }
@@ -1153,9 +1153,7 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text(
-            'Reset this camera before switching roles.',
-          ),
+          content: Text('Reset this camera before switching roles.'),
         ),
       );
       return;
