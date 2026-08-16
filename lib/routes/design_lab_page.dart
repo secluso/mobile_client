@@ -509,11 +509,7 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
         body: HomeEmptyPage(relayConnected: true, onAddCamera: _noop),
       );
     case 'relay_account':
-      return RelayAccountPage(
-        onCreateAccount: () {},
-        onSignIn: () {},
-        onSkip: () {},
-      );
+      return RelayAccountPage(onCreateAccount: () {}, onSignIn: () {});
     case 'relay_signup':
       return RelaySignUpPage(onSubmit: (_, __, ___) {}, onSkip: () {});
     case 'relay_signin':

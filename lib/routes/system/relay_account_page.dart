@@ -12,15 +12,11 @@ class RelayAccountPage extends StatelessWidget {
   const RelayAccountPage({
     required this.onCreateAccount,
     required this.onSignIn,
-    required this.onSkip,
     super.key,
   });
 
   final VoidCallback onCreateAccount;
   final VoidCallback onSignIn;
-
-  /// Carries on without an account at all.
-  final VoidCallback onSkip;
 
   @override
   Widget build(BuildContext context) {
@@ -76,15 +72,9 @@ class RelayAccountPage extends StatelessWidget {
 
             const SizedBox(height: 18),
             PrimaryButton(
-              label: 'Create account',
+              label: 'Create account · starts free',
               palette: palette,
               onPressed: onCreateAccount,
-            ),
-            const SizedBox(height: 10),
-            SecondaryButton(
-              label: 'Try it free · no account',
-              palette: palette,
-              onPressed: onSkip,
             ),
             const SizedBox(height: 16),
             QuietLink(
@@ -162,7 +152,7 @@ class _Fact extends StatelessWidget {
 class RelaySignUpPage extends StatefulWidget {
   const RelaySignUpPage({
     required this.onSubmit,
-    required this.onSkip,
+    this.onSkip,
     this.initialMode = AuthMode.create,
     super.key,
   });
@@ -170,7 +160,8 @@ class RelaySignUpPage extends StatefulWidget {
   /// Called with the entered credentials.
   final void Function(AuthMode mode, String email, String password) onSubmit;
 
-  final VoidCallback onSkip;
+  /// Optional escape hatch below the form
+  final VoidCallback? onSkip;
   final AuthMode initialMode;
 
   @override
@@ -248,12 +239,14 @@ class _RelaySignUpPageState extends State<RelaySignUpPage> {
               onPressed:
                   () => widget.onSubmit(_mode, _email.text, _password.text),
             ),
-            const SizedBox(height: 10),
-            SecondaryButton(
-              label: 'Try it free · no account',
-              palette: palette,
-              onPressed: widget.onSkip,
-            ),
+            if (widget.onSkip != null) ...[
+              const SizedBox(height: 10),
+              SecondaryButton(
+                label: 'Not now',
+                palette: palette,
+                onPressed: widget.onSkip!,
+              ),
+            ],
             const SizedBox(height: 16),
             QuietLink(
               label:
