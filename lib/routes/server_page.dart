@@ -7,7 +7,6 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_zxing/flutter_zxing.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:secluso_flutter/constants.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:secluso_flutter/keys.dart';
@@ -21,7 +20,15 @@ import 'package:secluso_flutter/utilities/logger.dart';
 import 'home_page.dart';
 import 'package:secluso_flutter/utilities/firebase_init.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
-import 'package:secluso_flutter/routes/system_shell_page.dart';
+import 'package:secluso_flutter/routes/system/account_page.dart';
+import 'package:secluso_flutter/routes/system/camera_plan_page.dart';
+import 'package:secluso_flutter/routes/system/plans_page.dart';
+import 'package:secluso_flutter/routes/system/relay_detail_page.dart';
+import 'package:secluso_flutter/routes/system/setup_choice_page.dart';
+import 'package:secluso_flutter/routes/system/share_camera_page.dart';
+import 'package:secluso_flutter/routes/system/system_models.dart';
+import 'package:secluso_flutter/routes/system/system_page.dart';
+import 'package:secluso_flutter/routes/system/system_theme.dart';
 import 'package:secluso_flutter/ui/secluso_qr_reader.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/secluso_shell_ui.dart';
@@ -66,12 +73,6 @@ class UserCredentialsQrPayload {
 
 const String _officialRelayConnectionKind = 'official';
 const String _selfHostedRelayConnectionKind = 'self_hosted';
-final Uri _seclusoWebsiteUri = Uri.parse('https://secluso.com');
-final Uri _seclusoSupportEmailUri = Uri(
-  scheme: 'mailto',
-  path: 'secluso@proton.me',
-  queryParameters: const {'subject': 'Secluso Support'},
-);
 
 class ServerPage extends StatefulWidget {
   final bool showBackButton;
@@ -687,22 +688,6 @@ class _ServerPageState extends State<ServerPage> {
     ).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  Future<void> _openExternalUrl(Uri uri) async {
-    final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!mounted || launched) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Unable to open ${uri.toString()}')));
-  }
-
-  Future<void> _contactSupport() {
-    return _openExternalUrl(_seclusoSupportEmailUri);
-  }
-
-  Future<void> _visitWebsite() {
-    return _openExternalUrl(_seclusoWebsiteUri);
-  }
-
   Future<void> _persistRelayConnectionKind(String relayConnectionKind) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(PrefKeys.relayConnectionKind, relayConnectionKind);
@@ -1082,6 +1067,183 @@ class _ServerPageState extends State<ServerPage> {
     );
   }
 
+  bool get _isSelfHostedRelay =>
+      _resolvedRelayConnectionKind() == _selfHostedRelayConnectionKind;
+
+  /// PLACEHOLDER.
+  static const _placeholderPlans = [
+    CameraPlan(tier: PlanTier.premium, usage: '320 GB of 1 TB'),
+    CameraPlan(tier: PlanTier.anonymous, usage: '820 GB of 2 TB'),
+    CameraPlan(tier: PlanTier.free, usage: '7.4 GB of 10 GB'),
+  ];
+
+  /// PLACEHOLDER.
+  String? _systemAccountEmail() =>
+      _isSelfHostedRelay ? null : 'you@example.com';
+
+  List<SystemCamera> _systemCameras() => [
+    for (final (index, name) in _cameraNames.indexed)
+      SystemCamera(
+        name: name,
+        // PLACEHOLDER.
+        plan:
+            _isSelfHostedRelay
+                ? null
+                : _placeholderPlans[index % _placeholderPlans.length],
+      ),
+  ];
+
+  /// The relay's own page
+  Future<void> _openRelayDetail() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (_) => RelayDetailPage(
+              relay: SystemRelay(
+                kind:
+                    _isSelfHostedRelay
+                        ? RelayKind.selfHosted
+                        : RelayKind.secluso,
+                endpoint: serverAddr ?? 'relay.local:8443',
+              ),
+              cameraCount: _cameraNames.length,
+              onSwitchRelay:
+                  () => unawaited(
+                    _openRelayScanFlow(
+                      relayConnectionKind:
+                          _isSelfHostedRelay
+                              ? _officialRelayConnectionKind
+                              : _selfHostedRelayConnectionKind,
+                    ),
+                  ),
+              onRemoveRelay:
+                  _isSelfHostedRelay
+                      ? () => unawaited(
+                        ReviewEnvironment.instance.isActive
+                            ? _resetReviewEnvironment()
+                            : _removeServerConnection(),
+                      )
+                      : null,
+            ),
+      ),
+    );
+  }
+
+  /// PLACEHOLDER.
+  Future<void> _openAccount() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (_) => AccountPage(
+              email: _systemAccountEmail() ?? '',
+              monthlyTotal: r'$22',
+              plans: _placeholderAccountPlans,
+              onOpenPlan: (plan) => _openCameraPlan(plan.cameraName ?? ''),
+              onAttachPlan: (_) {},
+              onCancelPlan: (_) {},
+              onSignOut: () => unawaited(_removeServerConnection()),
+            ),
+      ),
+    );
+  }
+
+  /// PLACEHOLDER, see [_placeholderPlans].
+  static const _placeholderAccountPlans = [
+    AccountPlan(
+      tier: PlanTier.premium,
+      cameraName: 'Front Door',
+      price: r'$6/mo',
+      renewal: 'renews Jul 28',
+    ),
+    AccountPlan(
+      tier: PlanTier.anonymous,
+      cameraName: 'Backyard',
+      price: r'$10/mo',
+      renewal: 'renews Jul 28',
+      shared: true,
+    ),
+    AccountPlan(
+      tier: PlanTier.premium,
+      price: r'$6/mo',
+      renewal: 'not on a camera',
+    ),
+  ];
+
+  /// PLACEHOLDER, see [_placeholderPlans].
+  Future<void> _openCameraPlan(String cameraName) async {
+    const people = [
+      SharedPerson(name: 'You', role: 'Owner', isOwner: true),
+      SharedPerson(name: 'Random person', role: 'Can watch live and see clips'),
+    ];
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (routeContext) => CameraPlanPage(
+              detail: CameraPlanDetail(
+                cameraName: cameraName,
+                tier: PlanTier.anonymous,
+                meta: r'$10/mo · up to 2K · renews Jul 28',
+                line: 'No identity travels with your video.',
+                storedOnRelay: '820 GB',
+                storedLimit: '2 TB',
+                motionClips: '580 GB',
+                livestream: '240 GB',
+                people: people,
+              ),
+              onShare:
+                  () => Navigator.of(routeContext).push(
+                    MaterialPageRoute<void>(
+                      builder:
+                          (_) => ShareCameraPage(
+                            cameraName: cameraName,
+                            people: people,
+                            onAddPerson: () {},
+                            onRemovePerson: (_) {},
+                          ),
+                    ),
+                  ),
+              onChangePlan:
+                  () => Navigator.of(routeContext).push(
+                    MaterialPageRoute<void>(
+                      builder:
+                          (_) => PlansPage(
+                            cameraName: cameraName,
+                            offers: _placeholderPlanOffers,
+                            onChoose: (_) {},
+                          ),
+                    ),
+                  ),
+              onCancel: () {},
+            ),
+      ),
+    );
+  }
+
+  /// PLACEHOLDER.
+  static const _placeholderPlanOffers = [
+    PlanOffer(
+      tier: PlanTier.free,
+      cost: r'$0',
+      period: '',
+      allowance: '10 GB motion · 10 GB live · 720p',
+      note: 'End-to-end encrypted · 1 viewer',
+    ),
+    PlanOffer(
+      tier: PlanTier.premium,
+      cost: r'$6',
+      period: '/mo',
+      allowance: '1 TB motion · 1 TB live · up to 2K',
+      note: '100× the bandwidth · multiple viewers',
+      popular: true,
+    ),
+    PlanOffer(
+      tier: PlanTier.anonymous,
+      cost: r'$10',
+      period: '/mo',
+      allowance: '1 TB motion · 1 TB live · up to 2K',
+    ),
+  ];
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -1090,79 +1252,42 @@ class _ServerPageState extends State<ServerPage> {
         dark ? const Color(0xFF050505) : const Color(0xFFF2F2F7);
     if (widget.showShellChrome && !hasSynced) {
       return ShellScaffold(
-        backgroundColor: shellBackgroundColor,
+        backgroundColor: SystemPalette.of(context).bg,
         safeTop: true,
-        body:
-            dark
-                ? SystemShellUnpairedPage(
-                  onUseSeclusoRelay:
-                      () => _openRelayScanFlow(
-                        relayConnectionKind: _officialRelayConnectionKind,
-                      ),
-                  onUseSelfHosted:
-                      () => _openRelayScanFlow(
-                        relayConnectionKind: _selfHostedRelayConnectionKind,
-                      ),
-                  onContactSupport: () => unawaited(_contactSupport()),
-                  onVisitWebsite: () => unawaited(_visitWebsite()),
-                )
-                : SystemShellUnpairedLightPage(
-                  onUseSeclusoRelay:
-                      () => _openRelayScanFlow(
-                        relayConnectionKind: _officialRelayConnectionKind,
-                      ),
-                  onUseSelfHosted:
-                      () => _openRelayScanFlow(
-                        relayConnectionKind: _selfHostedRelayConnectionKind,
-                      ),
-                  onContactSupport: () => unawaited(_contactSupport()),
-                  onVisitWebsite: () => unawaited(_visitWebsite()),
+        body: RelayChoicePage(
+          onSeclusoRelay:
+              () => unawaited(
+                _openRelayScanFlow(
+                  relayConnectionKind: _officialRelayConnectionKind,
                 ),
+              ),
+          onSelfHosted:
+              () => unawaited(
+                _openRelayScanFlow(
+                  relayConnectionKind: _selfHostedRelayConnectionKind,
+                ),
+              ),
+        ),
       );
     }
     if (widget.showShellChrome && hasSynced) {
-      if (!dark) {
-        return ShellScaffold(
-          backgroundColor: shellBackgroundColor,
-          safeTop: true,
-          body: SystemShellNoCamerasLightPage(
-            endpoint: serverAddr ?? 'relay.local:8443',
-            cameraNames: _cameraNames,
-            onRestartRelay:
-                ReviewEnvironment.instance.isActive
-                    ? _resetReviewEnvironment
-                    : _removeServerConnection,
-            onCheckForUpdates: _checkForUpdates,
-            onAddCamera: _openAddCameraFlow,
-            onOpenCamera: _openCameraDetails,
-            onContactSupport: () => unawaited(_contactSupport()),
-            onVisitWebsite: () => unawaited(_visitWebsite()),
-            restartRelayLabel:
-                ReviewEnvironment.instance.isActive
-                    ? 'Reset Review'
-                    : 'Remove Relay',
-          ),
-        );
-      }
       return ShellScaffold(
-        backgroundColor: shellBackgroundColor,
+        backgroundColor: SystemPalette.of(context).bg,
         safeTop: true,
-        body: SystemShellNoCamerasPage(
-          endpoint: serverAddr ?? 'relay.local:8443',
-          cameraNames: _cameraNames,
-          onRestartRelay:
-              ReviewEnvironment.instance.isActive
-                  ? _resetReviewEnvironment
-                  : _removeServerConnection,
-          onCheckForUpdates: _checkForUpdates,
+        body: SystemPage(
+          relay: SystemRelay(
+            kind:
+                _resolvedRelayConnectionKind() == _selfHostedRelayConnectionKind
+                    ? RelayKind.selfHosted
+                    : RelayKind.secluso,
+            endpoint: serverAddr ?? 'relay.local:8443',
+          ),
+          cameras: _systemCameras(),
+          accountEmail: _systemAccountEmail(),
+          onManageAccount: _systemAccountEmail() == null ? null : _openAccount,
+          onOpenRelay: _openRelayDetail,
           onAddCamera: _openAddCameraFlow,
-          onOpenCamera: _openCameraDetails,
-          onContactSupport: () => unawaited(_contactSupport()),
-          onVisitWebsite: () => unawaited(_visitWebsite()),
-          restartRelayLabel:
-              ReviewEnvironment.instance.isActive
-                  ? 'Reset Review'
-                  : 'Remove Relay',
+          onOpenCamera: (camera) => _openCameraDetails(camera.name),
         ),
       );
     }

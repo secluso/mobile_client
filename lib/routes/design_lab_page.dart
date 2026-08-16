@@ -20,12 +20,23 @@ import 'package:secluso_flutter/routes/camera/view_camera.dart';
 import 'package:secluso_flutter/routes/camera/view_livestream.dart';
 import 'package:secluso_flutter/routes/camera/view_video.dart';
 import 'package:secluso_flutter/routes/server_page.dart';
-import 'package:secluso_flutter/routes/system_shell_page.dart';
+import 'package:secluso_flutter/routes/system/account_page.dart';
+import 'package:secluso_flutter/routes/system/camera_plan_page.dart';
+import 'package:secluso_flutter/routes/system/plans_page.dart';
+import 'package:secluso_flutter/routes/system/home_empty_page.dart';
+import 'package:secluso_flutter/routes/system/relay_account_page.dart';
+import 'package:secluso_flutter/routes/system/setup_choice_page.dart';
+import 'package:secluso_flutter/routes/system/relay_detail_page.dart';
+import 'package:secluso_flutter/routes/system/share_camera_page.dart';
+import 'package:secluso_flutter/routes/system/system_models.dart';
+import 'package:secluso_flutter/routes/system/system_page.dart';
+import 'package:secluso_flutter/routes/system/system_theme.dart';
 import 'package:secluso_flutter/routes/camera-role/camera_role_pages.dart';
 import 'package:secluso_flutter/routes/onboarding/walkthrough_page.dart';
 import 'package:secluso_flutter/routes/settings_page.dart' as app_settings;
 import 'package:secluso_flutter/ui/secluso_preview_assets.dart';
 import 'package:secluso_flutter/routes/theme_provider.dart';
+import 'package:secluso_flutter/ui/secluso_shell_ui.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/secluso_theme.dart';
 import 'package:secluso_flutter/utilities/review_environment.dart';
@@ -478,6 +489,97 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
       );
     case 'system_overview':
       return const AppShell(initialIndex: 2, preview: true);
+    case 'system_relay':
+      return _systemPage(RelayKind.secluso, _sampleSystemCameras);
+    case 'system_one_camera':
+      return _systemPage(
+        RelayKind.secluso,
+        _sampleSystemCameras.take(1).toList(),
+      );
+    case 'system_no_cameras':
+      return _systemPage(RelayKind.secluso, const []);
+    case 'role_choice':
+      return RoleChoicePage(onWatchCameras: () {}, onBeCamera: () {});
+    case 'relay_choice':
+      return RelayChoicePage(onSeclusoRelay: () {}, onSelfHosted: () {});
+    case 'home_empty_editorial':
+      return const ShellScaffold(
+        backgroundColor: Color(0xFF0A0A0A),
+        safeTop: true,
+        body: HomeEmptyPage(relayConnected: true, onAddCamera: _noop),
+      );
+    case 'relay_account':
+      return RelayAccountPage(
+        onCreateAccount: () {},
+        onSignIn: () {},
+        onSkip: () {},
+      );
+    case 'relay_signup':
+      return RelaySignUpPage(onSubmit: (_, __, ___) {}, onSkip: () {});
+    case 'relay_signin':
+      return RelaySignUpPage(
+        initialMode: AuthMode.signIn,
+        onSubmit: (_, __, ___) {},
+        onSkip: () {},
+      );
+    case 'relay_detail':
+      return RelayDetailPage(
+        relay: const SystemRelay(
+          kind: RelayKind.secluso,
+          endpoint: 'us.relay.secluso.com',
+        ),
+        cameraCount: 3,
+        onSwitchRelay: () {},
+      );
+    case 'relay_detail_self_hosted':
+      return RelayDetailPage(
+        relay: const SystemRelay(
+          kind: RelayKind.selfHosted,
+          endpoint: 'relay.local:8443',
+        ),
+        cameraCount: 3,
+        onSwitchRelay: () {},
+        onRemoveRelay: () {},
+      );
+    case 'account_subscriptions':
+      return AccountPage(
+        email: 'you@example.com',
+        monthlyTotal: '\$22',
+        plans: _sampleAccountPlans,
+        onOpenPlan: (_) {},
+        onAttachPlan: (_) {},
+        onCancelPlan: (_) {},
+        onSignOut: () {},
+      );
+    case 'plans':
+      return PlansPage(
+        cameraName: 'Front Door',
+        offers: _samplePlanOffers,
+        onChoose: (_) {},
+      );
+    case 'camera_plan':
+      return CameraPlanPage(
+        detail: _sampleCameraPlan,
+        onShare: () {},
+        onChangePlan: () {},
+        onCancel: () {},
+      );
+    case 'share_camera':
+      return ShareCameraPage(
+        cameraName: 'Backyard',
+        people: _sampleSharedPeople,
+        onAddPerson: () {},
+        onRemovePerson: (_) {},
+      );
+    case 'system_self_hosted':
+      return _systemPage(
+        RelayKind.selfHosted,
+        // Self-hosted has no plans, only whether each camera is up.
+        [
+          for (final camera in _sampleSystemCameras)
+            SystemCamera(name: camera.name, thumbnail: camera.thumbnail),
+        ],
+      );
     case 'review_system_linked':
       return ServerPage(
         showBackButton: false,
@@ -498,7 +600,7 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
     case 'role_select':
       return Builder(
         builder:
-            (context) => RoleSelectPage(
+            (context) => RoleChoicePage(
               onWatchCameras: () {},
               onBeCamera:
                   () => Navigator.of(context).push(
@@ -512,6 +614,25 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
       return const CameraRolePairingPage();
     case 'camera_role_recording':
       return const CameraRoleRecordingPage();
+    case 'camera_role_running':
+      return const CameraRoleRecordingPage(
+        initialRunning: true,
+        cameraName: 'Garage',
+      );
+    case 'camera_role_scan':
+      return const CameraRolePairingPage(
+        previewQrPayload: 'secluso://pair/design-lab-sample-payload',
+      );
+    case 'camera_role_settings':
+      return CameraRoleSettingsPage(
+        cameraName: 'Garage',
+        recording: true,
+        settings: const CameraRoleSettings(lens: 'Back', quality: '1080p'),
+        onSettingsChanged: (_) {},
+        onStopRecording: () async {},
+        onUnpair: () async {},
+        onSwitchRole: () async {},
+      );
     case 'system_unpaired':
       return const AppShell(
         initialIndex: 2,
@@ -1429,3 +1550,112 @@ class _LabEntry extends StatelessWidget {
     );
   }
 }
+
+/// Fixtures for the System tab targets.
+const _sampleSystemCameras = <SystemCamera>[
+  SystemCamera(
+    name: 'Front Door',
+    thumbnail: AssetImage(SeclusoPreviewAssets.designFrontDoor),
+    plan: CameraPlan(tier: PlanTier.premium, usage: '320 GB of 1 TB'),
+  ),
+  SystemCamera(
+    name: 'Backyard',
+    thumbnail: AssetImage(SeclusoPreviewAssets.designBackyard),
+    shared: true,
+    plan: CameraPlan(tier: PlanTier.anonymous, usage: '820 GB of 2 TB'),
+  ),
+  SystemCamera(
+    name: 'Living Room',
+    thumbnail: AssetImage(SeclusoPreviewAssets.designLivingRoom),
+    plan: CameraPlan(tier: PlanTier.free, usage: '7.4 GB of 10 GB'),
+  ),
+];
+
+Widget _systemPage(RelayKind kind, List<SystemCamera> cameras) {
+  final selfHosted = kind == RelayKind.selfHosted;
+  // Matches how ServerPage mounts it, so the lab shows the real insets.
+  return Builder(
+    builder:
+        (context) => ShellScaffold(
+          backgroundColor: SystemPalette.of(context).bg,
+          safeTop: true,
+          body: SystemPage(
+            relay: SystemRelay(
+              kind: kind,
+              endpoint:
+                  selfHosted ? 'relay.local:8443' : 'us.relay.secluso.com',
+            ),
+            cameras: cameras,
+            accountEmail: selfHosted ? null : 'you@example.com',
+            onManageAccount: selfHosted ? null : () {},
+            onOpenRelay: () {},
+            onAddCamera: () {},
+            onOpenCamera: (_) {},
+          ),
+        ),
+  );
+}
+
+const _samplePlanOffers = <PlanOffer>[
+  PlanOffer(
+    tier: PlanTier.free,
+    cost: r'$0',
+    period: '',
+    allowance: '10 GB motion · 10 GB live · 720p',
+    note: 'End-to-end encrypted · 1 viewer',
+  ),
+  PlanOffer(
+    tier: PlanTier.premium,
+    cost: r'$6',
+    period: '/mo',
+    allowance: '1 TB motion · 1 TB live · up to 2K',
+    note: '100× the bandwidth · multiple viewers',
+    popular: true,
+  ),
+  PlanOffer(
+    tier: PlanTier.anonymous,
+    cost: r'$10',
+    period: '/mo',
+    allowance: '1 TB motion · 1 TB live · up to 2K',
+  ),
+];
+
+const _sampleAccountPlans = <AccountPlan>[
+  AccountPlan(
+    tier: PlanTier.premium,
+    cameraName: 'Front Door',
+    price: r'$6/mo',
+    renewal: 'renews Jul 28',
+  ),
+  AccountPlan(
+    tier: PlanTier.anonymous,
+    cameraName: 'Backyard',
+    price: r'$10/mo',
+    renewal: 'renews Jul 28',
+    shared: true,
+  ),
+  AccountPlan(
+    tier: PlanTier.premium,
+    price: r'$6/mo',
+    renewal: 'not on a camera',
+  ),
+];
+
+const _sampleSharedPeople = <SharedPerson>[
+  SharedPerson(name: 'You', role: 'Owner', isOwner: true),
+  SharedPerson(name: 'Alex Morgan', role: 'Can watch live and see clips'),
+];
+
+const _sampleCameraPlan = CameraPlanDetail(
+  cameraName: 'Backyard',
+  tier: PlanTier.anonymous,
+  meta: r'$10/mo · up to 2K · renews Jul 28',
+  line: 'No identity travels with your video.',
+  storedOnRelay: '820 GB',
+  storedLimit: '2 TB',
+  motionClips: '580 GB',
+  livestream: '240 GB',
+  people: _sampleSharedPeople,
+);
+
+void _noop() {}

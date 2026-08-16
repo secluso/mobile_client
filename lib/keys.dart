@@ -48,6 +48,10 @@ class PrefKeys {
   static const cameraNotificationEventsPrefix = "camera_notification_events_";
   static const cameraAddedViaAddAppPrefix = "camera_added_via_add_app_";
   static const reviewEnvironmentJson = "review_environment_json";
+  static const cameraRoleLens = 'camera_role_lens';
+  static const cameraRoleQuality = 'camera_role_quality';
+  static const cameraRoleKeepScreenDark = 'camera_role_keep_screen_dark';
+  static const cameraRoleShowRecLight = 'camera_role_show_rec_light';
   static const unifiedPushDistributor = 'unified_push_distributor';
   static const unifiedPushEndpointUrl = 'unified_push_endpoint_url';
   static const unifiedPushPubKey = 'unified_push_pub_key';
