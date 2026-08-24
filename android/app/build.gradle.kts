@@ -76,7 +76,14 @@ val fdroidBuildEnabled =
             providers.gradleProperty("dart-defines").orNull ?: System.getProperty("dart-defines")
         )["SECLUSO_FDROID_BUILD"] == "true"
 val fdroidExcludedPluginNames =
-    setOf("firebase_core", "firebase_messaging", "objectbox_flutter_libs")
+    setOf(
+        "firebase_core",
+        "firebase_messaging",
+        "objectbox_flutter_libs",
+        // In-app purchase pulls in Google Play Billing (proprietary).
+        // FDroid does not use this. Uses Stripe.
+        "in_app_purchase_android",
+    )
 val fdroidGeneratedRegistrantDir =
     layout.buildDirectory.dir("generated/source/secluso/fdroid")
 val generateFdroidGeneratedPluginRegistrant =
@@ -181,7 +188,7 @@ android {
         applicationId = "com.secluso.mobile"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = 23
+        minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -292,4 +299,16 @@ dependencies {
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test:core:1.5.0")
     androidTestImplementation("androidx.test.uiautomator:uiautomator:2.3.0")
+}
+
+
+// The camera hub's TLS stack verifies certificates through the Android system verifier
+repositories {
+    maven {
+        url = uri("/Users/john-study/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/rustls-platform-verifier-android-0.1.1/maven")
+    }
+}
+
+dependencies {
+    implementation("rustls:rustls-platform-verifier:0.1.1")
 }

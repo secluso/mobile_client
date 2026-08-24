@@ -20,11 +20,19 @@ import 'package:secluso_flutter/utilities/logger.dart';
 import 'home_page.dart';
 import 'package:secluso_flutter/utilities/firebase_init.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
+import 'package:secluso_flutter/utilities/server_backend.dart';
+import 'package:secluso_flutter/utilities/enterprise_session.dart';
+import 'package:secluso_flutter/utilities/billing_service.dart';
+import 'package:secluso_flutter/utilities/distribution.dart';
+import 'package:secluso_flutter/utilities/relay_environment.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:secluso_flutter/routes/system/relay_account_page.dart';
 import 'package:secluso_flutter/routes/system/account_page.dart';
 import 'package:secluso_flutter/routes/system/camera_plan_page.dart';
 import 'package:secluso_flutter/routes/system/plans_page.dart';
 import 'package:secluso_flutter/routes/system/relay_detail_page.dart';
 import 'package:secluso_flutter/routes/system/setup_choice_page.dart';
+import 'package:secluso_flutter/routes/camera-role/platform.dart';
 import 'package:secluso_flutter/routes/system/share_camera_page.dart';
 import 'package:secluso_flutter/routes/system/system_models.dart';
 import 'package:secluso_flutter/routes/system/system_page.dart';
@@ -46,13 +54,36 @@ class UserCredentialsQrPayload {
   final String? reviewRelayId;
   final String? reviewRelayLabel;
 
+  /// When these credentials came from the account login page
+  final bool isAccountLogin;
+
+  /// Which of the account's subscriptions this device works under.
+  final String? subscriptionUuid;
+
   UserCredentialsQrPayload({
     required this.serverUsername,
     required this.serverPassword,
     required this.serverAddress,
     this.reviewRelayId,
     this.reviewRelayLabel,
+    this.isAccountLogin = false,
+    this.subscriptionUuid,
   });
+
+  factory UserCredentialsQrPayload.accountLogin({
+    required String serverUsername,
+    required String serverPassword,
+    required String serverAddress,
+    String? subscriptionUuid,
+  }) {
+    return UserCredentialsQrPayload(
+      serverUsername: serverUsername,
+      serverPassword: serverPassword,
+      serverAddress: serverAddress,
+      isAccountLogin: true,
+      subscriptionUuid: subscriptionUuid,
+    );
+  }
 
   factory UserCredentialsQrPayload.review({
     required String relayId,
@@ -72,6 +103,10 @@ class UserCredentialsQrPayload {
 }
 
 const String _officialRelayConnectionKind = 'official';
+
+/// Where the official relay is (not self hosted).
+/// Prod/staging
+String get _officialRelayAddress => RelayEnvironment.officialAddress;
 const String _selfHostedRelayConnectionKind = 'self_hosted';
 
 class ServerPage extends StatefulWidget {
@@ -83,6 +118,8 @@ class ServerPage extends StatefulWidget {
   final bool openRelayScanOnLoad;
   final int relayScanRequestId;
 
+  final VoidCallback? onRelayConnected;
+
   const ServerPage({
     super.key,
     required this.showBackButton,
@@ -92,6 +129,7 @@ class ServerPage extends StatefulWidget {
     this.showShellChrome = false,
     this.openRelayScanOnLoad = false,
     this.relayScanRequestId = 0,
+    this.onRelayConnected,
   });
 
   @override
@@ -101,11 +139,20 @@ class ServerPage extends StatefulWidget {
 class _ServerPageState extends State<ServerPage> {
   String? serverAddr;
   List<String> _cameraNames = const [];
+  String? _accountEmail;
+  CameraPlan? _accountPlan;
+  AccountPlanSummary? _accountPlanSummary;
+  // camera name -> stored object bytes on the relay, from /usage by_group.
+  Map<String, int> _perCameraBytes = const {};
+  // The account plan's storage cap in bytes
+  int _planCapBytes = 10 * 1024 * 1024 * 1024;
 
   final TextEditingController _ipController = TextEditingController();
   bool hasSynced = false;
   final ValueNotifier<bool> _isDialogOpen = ValueNotifier(false);
   bool _didAutoOpenRelayScan = false;
+
+  bool _relayAuthInFlight = false;
   int _lastHandledRelayScanRequestId = -1;
   String? _pendingRelayConnectionKind;
 
@@ -143,6 +190,9 @@ class _ServerPageState extends State<ServerPage> {
     }
     _didAutoOpenRelayScan = true;
     _lastHandledRelayScanRequestId = widget.relayScanRequestId;
+    if (!_isPreviewMode) {
+      return;
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || hasSynced) return;
       unawaited(_openRelayScanFlow());
@@ -183,9 +233,145 @@ class _ServerPageState extends State<ServerPage> {
       serverAddr = savedServerAddr;
       hasSynced = synced;
       _cameraNames = cameraNames;
+      _accountEmail = prefs.getString(PrefKeys.serverUsername);
       _ipController.text = serverAddr ?? '';
     });
+    CameraUiBridge.relayConnected.value = synced;
+    if (synced) {
+      unawaited(_loadAccountPlan());
+    }
     _maybeAutoOpenRelayScan();
+  }
+
+  /// What the System tab shows per camera
+  Future<void> _loadAccountPlan() async {
+    if (_isSelfHostedRelay) return;
+    final result = await HttpClientService.instance.fetchAccountUsage();
+    // Renewal rides in the token
+    final sub = await HttpClientService.instance
+        .currentSubscription()
+        .catchError((_) => null);
+    // Server-settable price copy
+    final pricing = await HttpClientService.instance.fetchPricing().catchError(
+      (_) => (premium: null, updatedAtSeconds: null),
+    );
+    // Attribute stored bytes per camera from the relay's group totals.
+    final perCamera = await result.fold(
+      (usage) => HttpClientService.instance.perCameraBytes(usage.byGroup),
+      (_) async => const <String, int>{},
+    );
+    if (!mounted) return;
+    result.fold((usage) {
+      final tier = _planTierFromName(usage.tier);
+      const gb = 1024 * 1024 * 1024;
+      final cap = tier == PlanTier.free ? 10 * gb : 1024 * gb;
+      final fraction =
+          cap > 0 ? (usage.storedBytes / cap).clamp(0.0, 1.0) : 0.0;
+      _perCameraBytes = perCamera;
+      _planCapBytes = cap;
+      setState(() {
+        _accountPlan = CameraPlan(
+          tier: tier,
+          usage: '${_formatBytes(usage.storedBytes)} of ${_formatBytes(cap)}',
+        );
+        _accountPlanSummary = AccountPlanSummary(
+          tier: tier,
+          price: _priceLabelFor(
+            tier,
+            pricing.premium,
+            pricing.updatedAtSeconds,
+          ),
+          renewal: _renewalLabel(sub?.expiresAt),
+          usedLabel: _formatBytes(usage.storedBytes),
+          limitLabel: _formatBytes(cap),
+          usedFraction: fraction.toDouble(),
+          viewersNote: _viewersNote(tier),
+          // Cameras are filled in fresh when the page opens.
+          cameras: const [],
+        );
+      });
+    }, (_) {});
+  }
+
+  // A server-provided price with a newer date wins
+  // A fresh app build (newer date) wins back over an old server value.
+  static const _bundledPremiumPrice = r'$6/mo';
+  static const _bundledAnonymousPrice = r'$10/mo';
+  static final DateTime _bundledPriceAsOf = DateTime.utc(2026, 8, 23);
+
+  static String _priceLabelFor(
+    PlanTier tier,
+    String? serverPremiumPrice,
+    int? serverUpdatedAtSeconds,
+  ) => switch (tier) {
+    // Free shows no price; the tier name already says "Free".
+    PlanTier.free => '',
+    PlanTier.premium => _premiumPriceLabel(
+      serverPremiumPrice,
+      serverUpdatedAtSeconds,
+    ),
+    PlanTier.anonymous => _bundledAnonymousPrice,
+  };
+
+  static String _premiumPriceLabel(String? serverPrice, int? serverUpdatedAt) {
+    final storePrice = BillingService.instance.premiumProduct?.price;
+    if (storePrice != null && storePrice.isNotEmpty) return storePrice;
+    if (serverPrice != null &&
+        serverPrice.isNotEmpty &&
+        serverUpdatedAt != null) {
+      final serverDate = DateTime.fromMillisecondsSinceEpoch(
+        serverUpdatedAt * 1000,
+        isUtc: true,
+      );
+      if (serverDate.isAfter(_bundledPriceAsOf)) return serverPrice;
+    }
+    return _bundledPremiumPrice;
+  }
+
+  static PlanTier _planTierFromName(String name) => switch (name) {
+    'premium' => PlanTier.premium,
+    'anonymous' => PlanTier.anonymous,
+    _ => PlanTier.free,
+  };
+
+  /// Member cap per tier, mirroring the server's tier registry.
+  static String _viewersNote(PlanTier tier) =>
+      tier == PlanTier.free ? '1 viewer' : 'up to 6 viewers';
+
+  /// "renews <date>" from unix seconds, or "" when there's nothing to show
+  static String _renewalLabel(int? expiresAtSeconds) {
+    if (expiresAtSeconds == null) return '';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final date = DateTime.fromMillisecondsSinceEpoch(expiresAtSeconds * 1000);
+    return 'renews ${months[date.month - 1]} ${date.day}';
+  }
+
+  static String _formatBytes(int bytes) {
+    const kb = 1024;
+    const mb = kb * 1024;
+    const gb = mb * 1024;
+    const tb = gb * 1024;
+    String trim(double value) =>
+        value == value.roundToDouble()
+            ? value.toStringAsFixed(0)
+            : value.toStringAsFixed(1);
+    if (bytes >= tb) return '${trim(bytes / tb)} TB';
+    if (bytes >= gb) return '${trim(bytes / gb)} GB';
+    if (bytes >= mb) return '${trim(bytes / mb)} MB';
+    return '${(bytes / kb).toStringAsFixed(0)} KB';
   }
 
   Future<List<String>> _fetchCameraNames() async {
@@ -261,7 +447,9 @@ class _ServerPageState extends State<ServerPage> {
               ReviewEnvironment.instance.session?.cameraNames ?? const [];
           _ipController.text = credentialsFull.serverAddress;
         });
+        CameraUiBridge.relayConnected.value = true;
         CameraUiBridge.refreshCameraListCallback?.call();
+        widget.onRelayConnected?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -277,8 +465,10 @@ class _ServerPageState extends State<ServerPage> {
       }
 
       // TODO: Check how this handles on failure... bad QR code
-      if (credentialsFull.serverUsername.length != Constants.usernameLength ||
-          credentialsFull.serverPassword.length != Constants.passwordLength) {
+      if (!credentialsFull.isAccountLogin &&
+          (credentialsFull.serverUsername.length != Constants.usernameLength ||
+              credentialsFull.serverPassword.length !=
+                  Constants.passwordLength)) {
         Log.e(
           "Server Page Save: User credentials should be more than 28 characters.",
         );
@@ -343,15 +533,26 @@ class _ServerPageState extends State<ServerPage> {
               serverAddr: normalizedServerAddr,
               username: serverUsername,
               password: serverPassword,
+              // The backend pref isn't written until the save below
+              backend:
+                  credentialsFull.isAccountLogin
+                      ? ServerBackend.enterprise
+                      : ServerBackend.selfHosted,
             );
-        if (fetched.isFailure || fetched.value == null) {
+        final fetchedError = fetched.error?.toString() ?? '';
+        if (fetched.isFailure &&
+            credentialsFull.isAccountLogin &&
+            fetchedError.contains('404')) {
+          // The official relay may not have FCM configured yet..
+          // that shouldn't hold the account hostage.
+          Log.w('Relay has no FCM config; connecting without push for now');
+        } else if (fetched.isFailure || fetched.value == null) {
           setState(() {
             serverAddr = prevServerAddr;
             hasSynced = prevHasSynced;
             _ipController.text = prevServerAddr ?? '';
           });
 
-          final fetchedError = fetched.error?.toString() ?? '';
           final failureMessage =
               fetchedError.contains('401 Unauthorized') ||
                       fetchedError.contains('Failed to fetch fcm config: 401')
@@ -369,9 +570,9 @@ class _ServerPageState extends State<ServerPage> {
             ),
           );
           return;
+        } else {
+          fetchedFcmConfig = fetched.value;
         }
-
-        fetchedFcmConfig = fetched.value;
       }
       if (Platform.isAndroid &&
           AndroidPushTransport.isUnifiedValue(androidPushPlatform)) {
@@ -383,7 +584,22 @@ class _ServerPageState extends State<ServerPage> {
       await prefs.setString(PrefKeys.serverAddr, normalizedServerAddr);
       await prefs.setString(PrefKeys.serverUsername, serverUsername);
       await prefs.setString(PrefKeys.serverPassword, serverPassword);
+      if (credentialsFull.subscriptionUuid != null) {
+        await prefs.setString(
+          PrefKeys.subscriptionUuid,
+          credentialsFull.subscriptionUuid!,
+        );
+      } else {
+        // A different relay, or one that doesn't do subscriptions.
+        await prefs.remove(PrefKeys.subscriptionUuid);
+      }
       await prefs.setString(PrefKeys.relayConnectionKind, relayConnectionKind);
+      // Which DS the credentials correspond to is needed for the Rust side to know which auth scheme to use.
+      await HttpClientService.instance.setServerBackend(
+        credentialsFull.isAccountLogin
+            ? ServerBackend.enterprise
+            : ServerBackend.selfHosted,
+      );
       if (Platform.isAndroid) {
         await prefs.setString(
           PrefKeys.androidPushPlatform,
@@ -405,10 +621,11 @@ class _ServerPageState extends State<ServerPage> {
       HttpClientService.instance.resetVersionGateState();
 
       if (Platform.isAndroid &&
-          !AndroidPushTransport.isUnifiedValue(androidPushPlatform)) {
+          !AndroidPushTransport.isUnifiedValue(androidPushPlatform) &&
+          fetchedFcmConfig != null) {
         await prefs.setString(
           PrefKeys.fcmConfigJson,
-          jsonEncode(fetchedFcmConfig!.toJson()),
+          jsonEncode(fetchedFcmConfig.toJson()),
         );
       } else {
         await prefs.remove(PrefKeys.fcmConfigJson);
@@ -419,6 +636,7 @@ class _ServerPageState extends State<ServerPage> {
         hasSynced = true;
         _cameraNames = const [];
       });
+      CameraUiBridge.relayConnected.value = true;
       CameraUiBridge.refreshCameraListCallback?.call();
 
       //initialize all cameras again
@@ -440,8 +658,10 @@ class _ServerPageState extends State<ServerPage> {
           await UnifiedPushService.instance.deactivate();
           bool firebaseReady = false;
           try {
-            await FirebaseInit.ensure(fetchedFcmConfig!);
-            firebaseReady = true;
+            if (fetchedFcmConfig != null) {
+              await FirebaseInit.ensure(fetchedFcmConfig);
+              firebaseReady = true;
+            }
           } catch (e, st) {
             Log.e("Firebase init failed: $e\n$st");
           }
@@ -464,13 +684,21 @@ class _ServerPageState extends State<ServerPage> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text("Server settings saved!")));
+
+      // A first connection's next step is adding a camera
+      if (!prevHasSynced) {
+        CameraUiBridge.switchShellTabCallback?.call(0);
+      }
+      widget.onRelayConnected?.call();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           backgroundColor: Colors.red,
           content: Text(
-            "Potentially invalid QR code. Please try again",
+            credentialsFull.isAccountLogin
+                ? "Could not finish setting up the relay. Please try again"
+                : "Potentially invalid QR code. Please try again",
             style: TextStyle(color: Colors.white),
           ),
         ),
@@ -572,6 +800,7 @@ class _ServerPageState extends State<ServerPage> {
       _cameraNames = const [];
       _ipController.clear();
     });
+    CameraUiBridge.relayConnected.value = false;
     CameraUiBridge.refreshCameraListCallback?.call();
 
     if (!mounted) return;
@@ -780,10 +1009,180 @@ class _ServerPageState extends State<ServerPage> {
       _cameraNames = const [];
       _ipController.clear();
     });
+    CameraUiBridge.relayConnected.value = false;
     CameraUiBridge.refreshCameraListCallback?.call();
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(const SnackBar(content: Text('Review environment reset.')));
+  }
+
+  /// The official relay supports account creation and login
+  /// Self-hosted relays are expected to be pre-provisioned with credentials (so QR is used)
+  Future<void> _openRelayLoginFlow() async {
+    _pendingRelayConnectionKind = _officialRelayConnectionKind;
+    final credentialsFull = await Navigator.push<UserCredentialsQrPayload?>(
+      context,
+      MaterialPageRoute(
+        builder:
+            (pageContext) => RelayAccountPage(
+              onCreateAccount:
+                  () => _pushRelaySignUp(pageContext, AuthMode.create),
+              onSignIn: () => _pushRelaySignUp(pageContext, AuthMode.signIn),
+            ),
+      ),
+    );
+    if (credentialsFull == null || !mounted) {
+      _pendingRelayConnectionKind = null;
+      return;
+    }
+    await _saveServerSettings(credentialsFull);
+  }
+
+  Future<void> _pushRelaySignUp(BuildContext pageContext, AuthMode mode) async {
+    final payload = await Navigator.push<UserCredentialsQrPayload?>(
+      pageContext,
+      MaterialPageRoute(
+        builder:
+            (formContext) => RelaySignUpPage(
+              initialMode: mode,
+              onSubmit:
+                  (mode, email, password) =>
+                      _verifyRelayAccount(formContext, mode, email, password),
+            ),
+      ),
+    );
+    // The form verified the credentials; hand them up through the intro page too.
+    if (payload != null && pageContext.mounted) {
+      Navigator.of(pageContext).pop(payload);
+    }
+  }
+
+  Future<void> _verifyRelayAccount(
+    BuildContext formContext,
+    AuthMode mode,
+    String email,
+    String password,
+  ) async {
+    final username = email.trim();
+
+    String? complaint;
+    if (username.isEmpty || password.isEmpty) {
+      complaint = 'Enter an email and a password.';
+    } else if (mode == AuthMode.create &&
+        !RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(username)) {
+      // The relay stores this as an opaque username
+      // Form mentions an email.
+      // TODO: Not sure what we should do.
+      complaint = 'Enter a real email address.';
+    } else if (mode == AuthMode.create && password.length < 12) {
+      complaint = 'Passwords need at least 12 characters.';
+    } else if (mode == AuthMode.create &&
+        !(password.contains(RegExp(r'[A-Za-z]')) &&
+            password.contains(RegExp(r'[0-9]')) &&
+            password.contains(RegExp(r'[^A-Za-z0-9\s]')))) {
+      complaint = 'Passwords need a letter, a number, and a symbol.';
+    }
+    if (complaint != null) {
+      ScaffoldMessenger.of(
+        formContext,
+      ).showSnackBar(SnackBar(content: Text(complaint)));
+      return;
+    }
+
+    if (_relayAuthInFlight) {
+      return;
+    }
+    _relayAuthInFlight = true;
+
+    // The form's button has no busy state of its own, so a barrier stands in.
+    unawaited(
+      showDialog<void>(
+        context: formContext,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      ),
+    );
+
+    String? subscriptionUuid;
+    final session = EnterpriseSession();
+    try {
+      if (mode == AuthMode.create) {
+        await session.registerStrict(
+          serverAddr: _officialRelayAddress,
+          username: username,
+          password: password,
+        );
+
+        try {
+          subscriptionUuid = await session.claimFreeTier(
+            serverAddr: _officialRelayAddress,
+            username: username,
+            password: password,
+          );
+        } catch (e) {
+          Log.w('Free tier claim after signup did not take: $e');
+        }
+      } else {
+        final token = await session.accessToken(
+          serverAddr: _officialRelayAddress,
+          username: username,
+          password: password,
+        );
+        final subs = EnterpriseSession.subsFromToken(token);
+        if (subs.isNotEmpty) {
+          // One subscription picks itself.
+          subscriptionUuid = subs.first['uuid'] as String?;
+          if (subs.length > 1) {
+            Log.w(
+              'Account holds ${subs.length} subscriptions; using the first',
+            );
+          }
+        }
+      }
+    } catch (e) {
+      Log.w(
+        'Relay account ${mode == AuthMode.create ? 'signup' : 'login'} failed: $e',
+      );
+      if (!formContext.mounted) return;
+      ScaffoldMessenger.of(
+        formContext,
+      ).showSnackBar(SnackBar(content: Text(_relayAuthError(e.toString()))));
+      return;
+    } finally {
+      _relayAuthInFlight = false;
+      if (formContext.mounted) {
+        Navigator.of(formContext, rootNavigator: true).pop();
+      }
+    }
+
+    if (!formContext.mounted) return;
+    Navigator.of(formContext).pop(
+      UserCredentialsQrPayload.accountLogin(
+        serverUsername: username,
+        serverPassword: password,
+        serverAddress: _officialRelayAddress,
+        subscriptionUuid: subscriptionUuid,
+      ),
+    );
+  }
+
+  String _relayAuthError(String raw) {
+    if (raw.contains('401')) {
+      return 'Wrong email or password.';
+    }
+    if (raw.contains('409')) {
+      return 'That email already has an account. Try signing in.';
+    }
+    if (raw.contains('400')) {
+      if (raw.contains('username')) {
+        return 'That email has characters the relay does not accept.';
+      }
+      if (raw.contains('password')) {
+        return 'Passwords need a letter, a number, and a symbol.';
+      }
+      return 'The relay rejected those credentials.';
+    }
+    return 'Could not reach the relay. Check your connection and try again.';
   }
 
   Future<void> _openRelayScanFlow({
@@ -920,6 +1319,21 @@ class _ServerPageState extends State<ServerPage> {
             ),
           ),
           const SizedBox(height: 16),
+          // The relay without a camera does nothing; point at the next step until the first one is paired.
+          if (_cameraNames.isEmpty) ...[
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                icon: const Icon(Icons.videocam_rounded, size: 20),
+                label: const Text('Add your first camera'),
+                style: FilledButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                ),
+                onPressed: () => CameraUiBridge.switchShellTabCallback?.call(0),
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
               Expanded(
@@ -971,13 +1385,10 @@ class _ServerPageState extends State<ServerPage> {
               _setupOptionCard(
                 theme,
                 title: 'Secluso Relay',
-                subtitle: 'Scan the QR code from your Secluso account',
-                icon: Icons.qr_code_2_rounded,
+                subtitle: 'Sign in with your Secluso account',
+                icon: Icons.person_rounded,
                 highlighted: true,
-                onTap:
-                    () => _openRelayScanFlow(
-                      relayConnectionKind: _officialRelayConnectionKind,
-                    ),
+                onTap: _openRelayLoginFlow,
               ),
               const SizedBox(height: 14),
               _setupOptionCard(
@@ -1070,27 +1481,10 @@ class _ServerPageState extends State<ServerPage> {
   bool get _isSelfHostedRelay =>
       _resolvedRelayConnectionKind() == _selfHostedRelayConnectionKind;
 
-  /// PLACEHOLDER.
-  static const _placeholderPlans = [
-    CameraPlan(tier: PlanTier.premium, usage: '320 GB of 1 TB'),
-    CameraPlan(tier: PlanTier.anonymous, usage: '820 GB of 2 TB'),
-    CameraPlan(tier: PlanTier.free, usage: '7.4 GB of 10 GB'),
-  ];
-
-  /// PLACEHOLDER.
-  String? _systemAccountEmail() =>
-      _isSelfHostedRelay ? null : 'you@example.com';
+  String? _systemAccountEmail() => _isSelfHostedRelay ? null : _accountEmail;
 
   List<SystemCamera> _systemCameras() => [
-    for (final (index, name) in _cameraNames.indexed)
-      SystemCamera(
-        name: name,
-        // PLACEHOLDER.
-        plan:
-            _isSelfHostedRelay
-                ? null
-                : _placeholderPlans[index % _placeholderPlans.length],
-      ),
+    for (final name in _cameraNames) SystemCamera(name: name),
   ];
 
   /// The relay's own page
@@ -1129,65 +1523,109 @@ class _ServerPageState extends State<ServerPage> {
     );
   }
 
-  /// PLACEHOLDER.
   Future<void> _openAccount() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder:
             (_) => AccountPage(
               email: _systemAccountEmail() ?? '',
-              monthlyTotal: r'$22',
-              plans: _placeholderAccountPlans,
-              onOpenPlan: (plan) => _openCameraPlan(plan.cameraName ?? ''),
-              onAttachPlan: (_) {},
-              onCancelPlan: (_) {},
+              plan: _accountPlanForDisplay(),
+              onOpenCamera: (camera) => _openCameraPlan(camera.name),
+              onChangePlan: () => unawaited(_openPlans()),
+              onCancel: _openBillingPortal,
               onSignOut: () => unawaited(_removeServerConnection()),
             ),
       ),
     );
   }
 
-  /// PLACEHOLDER, see [_placeholderPlans].
-  static const _placeholderAccountPlans = [
-    AccountPlan(
-      tier: PlanTier.premium,
-      cameraName: 'Front Door',
-      price: r'$6/mo',
-      renewal: 'renews Jul 28',
-    ),
-    AccountPlan(
-      tier: PlanTier.anonymous,
-      cameraName: 'Backyard',
-      price: r'$10/mo',
-      renewal: 'renews Jul 28',
-      shared: true,
-    ),
-    AccountPlan(
-      tier: PlanTier.premium,
-      price: r'$6/mo',
-      renewal: 'not on a camera',
-    ),
-  ];
-
-  /// PLACEHOLDER, see [_placeholderPlans].
-  Future<void> _openCameraPlan(String cameraName) async {
-    const people = [
-      SharedPerson(name: 'You', role: 'Owner', isOwner: true),
-      SharedPerson(name: 'Random person', role: 'Can watch live and see clips'),
+  AccountPlanSummary _accountPlanForDisplay() {
+    final cameras = [
+      for (final name in _cameraNames)
+        AccountCamera(
+          name: name,
+          usage:
+              _perCameraBytes.containsKey(name)
+                  ? _formatBytes(_perCameraBytes[name]!)
+                  : null,
+        ),
     ];
+    final loaded = _accountPlanSummary;
+    if (loaded == null) {
+      const gb = 1024 * 1024 * 1024;
+      return AccountPlanSummary(
+        tier: PlanTier.free,
+        price: '',
+        renewal: '',
+        usedLabel: _formatBytes(0),
+        limitLabel: _formatBytes(10 * gb),
+        usedFraction: 0,
+        viewersNote: _viewersNote(PlanTier.free),
+        cameras: cameras,
+      );
+    }
+    return AccountPlanSummary(
+      tier: loaded.tier,
+      price: loaded.price,
+      renewal: loaded.renewal,
+      usedLabel: loaded.usedLabel,
+      limitLabel: loaded.limitLabel,
+      usedFraction: loaded.usedFraction,
+      viewersNote: loaded.viewersNote,
+      cameras: cameras,
+    );
+  }
+
+  Future<void> _choosePlan(PlanOffer offer) async {
+    final storeSells =
+        offer.tier == PlanTier.premium && Distribution.supportsInAppPurchase;
+    if (!storeSells) {
+      await _openBillingPortal();
+      return;
+    }
+
+    final started = await BillingService.instance.buyPremium();
+    if (!mounted) return;
+    if (!started) {
+      // Store not usable or product missing: fall back to the web portal.
+      await _openBillingPortal();
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Opening the store…')));
+  }
+
+  /// Send the user to the web to subscribe or manage a plan.
+  /// Used by F-Droid
+  Future<void> _openBillingPortal() async {
+    final uri = Uri.parse(Distribution.billingPortalUrl);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open ${Distribution.billingPortalUrl}'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openCameraPlan(String cameraName) async {
+    // Sharing (who else can watch) isn't wired yet, so show just the owner.
+    const people = [SharedPerson(name: 'You', role: 'Owner', isOwner: true)];
+    final tier = _accountPlan?.tier ?? PlanTier.free;
+    // camera's stored bytes, when the relay could attribute them.
+    final bytes = _perCameraBytes[cameraName];
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder:
             (routeContext) => CameraPlanPage(
               detail: CameraPlanDetail(
                 cameraName: cameraName,
-                tier: PlanTier.anonymous,
-                meta: r'$10/mo · up to 2K · renews Jul 28',
-                line: 'No identity travels with your video.',
-                storedOnRelay: '820 GB',
-                storedLimit: '2 TB',
-                motionClips: '580 GB',
-                livestream: '240 GB',
+                tier: tier,
+                line: 'Encrypted end-to-end.',
+                storedOnRelay: bytes != null ? _formatBytes(bytes) : null,
+                storedLimit: bytes != null ? _formatBytes(_planCapBytes) : null,
                 people: people,
               ),
               onShare:
@@ -1202,18 +1640,20 @@ class _ServerPageState extends State<ServerPage> {
                           ),
                     ),
                   ),
-              onChangePlan:
-                  () => Navigator.of(routeContext).push(
-                    MaterialPageRoute<void>(
-                      builder:
-                          (_) => PlansPage(
-                            cameraName: cameraName,
-                            offers: _placeholderPlanOffers,
-                            onChoose: (_) {},
-                          ),
-                    ),
-                  ),
-              onCancel: () {},
+            ),
+      ),
+    );
+  }
+
+  /// Reached from Account -> Change plan.
+  Future<void> _openPlans() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (_) => PlansPage(
+              offers: _placeholderPlanOffers,
+              onChoose: _choosePlan,
+              webBilling: !Distribution.supportsInAppPurchase,
             ),
       ),
     );
@@ -1255,12 +1695,8 @@ class _ServerPageState extends State<ServerPage> {
         backgroundColor: SystemPalette.of(context).bg,
         safeTop: true,
         body: RelayChoicePage(
-          onSeclusoRelay:
-              () => unawaited(
-                _openRelayScanFlow(
-                  relayConnectionKind: _officialRelayConnectionKind,
-                ),
-              ),
+          hasRoleStep: cameraRoleSupported,
+          onSeclusoRelay: () => unawaited(_openRelayLoginFlow()),
           onSelfHosted:
               () => unawaited(
                 _openRelayScanFlow(
@@ -1284,6 +1720,7 @@ class _ServerPageState extends State<ServerPage> {
           ),
           cameras: _systemCameras(),
           accountEmail: _systemAccountEmail(),
+          plan: _isSelfHostedRelay ? null : _accountPlan,
           onManageAccount: _systemAccountEmail() == null ? null : _openAccount,
           onOpenRelay: _openRelayDetail,
           onAddCamera: _openAddCameraFlow,

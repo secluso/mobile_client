@@ -88,3 +88,6 @@ tool/repro/__pycache__/
 .secluso-repro-cache/
 .secluso-repro-build.lock
 design*
+
+# cargo patch for local dev. convenience
+.cargo/

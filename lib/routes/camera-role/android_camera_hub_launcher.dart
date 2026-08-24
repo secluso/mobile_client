@@ -8,6 +8,7 @@ import 'package:flutter/widgets.dart' show WidgetsBinding;
 import 'package:path/path.dart' as p;
 import 'package:permission_handler/permission_handler.dart';
 import 'package:secluso_flutter/keys.dart';
+import 'package:secluso_flutter/routes/camera-role/camera_role_settings.dart';
 import 'package:secluso_flutter/src/rust_camera/api.dart' as rust_camera_api;
 import 'package:secluso_flutter/src/rust_camera/guard.dart';
 import 'package:secluso_flutter/utilities/app_paths.dart';
@@ -60,16 +61,14 @@ class AndroidCameraSpec {
   factory AndroidCameraSpec.fromJson(Map<String, Object?> json) {
     return AndroidCameraSpec(
       facing: json['facing'] as int,
-      resolutions:
-          (json['resolutions'] as List<Object?>)
-              .map((item) => Map<String, Object?>.from(item as Map))
-              .map(AndroidCameraResolution.fromJson)
-              .toList(growable: false),
-      frameRateRanges:
-          (json['frame_rate_ranges'] as List<Object?>)
-              .map((item) => Map<String, Object?>.from(item as Map))
-              .map(AndroidCameraFrameRateRange.fromJson)
-              .toList(growable: false),
+      resolutions: (json['resolutions'] as List<Object?>)
+          .map((item) => Map<String, Object?>.from(item as Map))
+          .map(AndroidCameraResolution.fromJson)
+          .toList(growable: false),
+      frameRateRanges: (json['frame_rate_ranges'] as List<Object?>)
+          .map((item) => Map<String, Object?>.from(item as Map))
+          .map(AndroidCameraFrameRateRange.fromJson)
+          .toList(growable: false),
     );
   }
 
@@ -154,12 +153,17 @@ class AndroidCameraHubLauncher {
         .toList(growable: false);
   }
 
+  /// The native side has been told which camera and mode to use in this process.
+  /// However it forgets on restart, and if we were to start without it, it panics.
+  static bool _nativeConfigured = false;
+
   static Future<void> setCameraSettings(AndroidCameraSettings settings) async {
     if (!Platform.isAndroid) {
       return;
     }
 
     await RustCameraLibGuard.initOnce();
+    _nativeConfigured = true;
     await rust_camera_api.setAndroidCameraSettings(
       facing: settings.facing,
       width: settings.width,
@@ -208,12 +212,53 @@ class AndroidCameraHubLauncher {
     Log.i('Android camera hub workDir: ${dir.path}');
 
     await RustCameraLibGuard.initOnce();
+    if (!_nativeConfigured) {
+      await _restoreCameraSettings();
+    }
 
     await rust_camera_api.startAndroidCameraHub(
-        workDir: dir.path,
-        serverUsername: serverUsername,
-        serverPassword: serverPassword,
-        serverAddr: serverAddr,
+      workDir: dir.path,
+      serverUsername: serverUsername,
+      serverPassword: serverPassword,
+      serverAddr: serverAddr,
+      serverBackend: prefs.getString(PrefKeys.serverBackend) ?? 'self_hosted',
+    );
+  }
+
+  /// After a process restart the paired phone skips the setup pages and goes straight to the camera hub.
+  /// However the native side forgets which camera and mode to use, and panics if
+  /// we start the hub without telling it again. This restores the last-used settings.
+  static Future<void> _restoreCameraSettings() async {
+    final specs = await cameraSpecs();
+    if (specs.isEmpty) {
+      throw StateError('No Android cameras are available on this phone.');
+    }
+    final saved = await CameraRoleSettings.load();
+    final wantFacing = saved.lens == 'Front camera' ? facingFront : facingBack;
+    final spec = specs.firstWhere(
+      (s) => s.facing == wantFacing,
+      orElse: () => specs.first,
+    );
+    final savedHeight = int.tryParse((saved.quality ?? '').replaceAll('p', ''));
+    final resolution = spec.resolutions.firstWhere(
+      (r) => r.height == savedHeight,
+      orElse:
+          () => spec.resolutions.firstWhere(
+            (r) => r.width == 1280 && r.height == 720,
+            orElse: () => spec.resolutions.first,
+          ),
+    );
+    final frameRate = spec.frameRateRanges.firstWhere(
+      (r) => r.min <= 10 && r.max >= 10,
+      orElse: () => spec.frameRateRanges.first,
+    );
+    await setCameraSettings(
+      AndroidCameraSettings(
+        facing: spec.facing,
+        width: resolution.width,
+        height: resolution.height,
+        frameRateRange: frameRate,
+      ),
     );
   }
 
@@ -227,9 +272,21 @@ class AndroidCameraHubLauncher {
   }
 
   static Future<String> startHubAndWaitForQrPayload() async {
-    await startHub();
-
+    // We delete any stale QR payloads before starting the hub, to avoid returning an old one.
     final dir = await workDir();
+    if (await dir.exists()) {
+      final stale = dir
+          .listSync(recursive: true, followLinks: false)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('_secret_qrcode_payload.json'));
+      for (final file in stale) {
+        try {
+          await file.delete();
+        } catch (_) {}
+      }
+    }
+
+    await startHub();
     final payload = await _waitForQrPayload(dir);
     if (payload == null || payload.trim().isEmpty) {
       throw StateError(
@@ -265,10 +322,11 @@ class AndroidCameraHubLauncher {
     await RustCameraLibGuard.initOnce();
 
     await rust_camera_api.resetAndroidCameraHub(
-	workDir: dir.path,
-        serverUsername: serverUsername,
-        serverPassword: serverPassword,
-        serverAddr: serverAddr,
+      workDir: dir.path,
+      serverUsername: serverUsername,
+      serverPassword: serverPassword,
+      serverAddr: serverAddr,
+      serverBackend: prefs.getString(PrefKeys.serverBackend) ?? 'self_hosted',
     );
 
     // We do this just to be sure. Otherwise, the Rust reset should delete this.
@@ -295,7 +353,9 @@ class AndroidCameraHubLauncher {
           dir
               .listSync(recursive: true, followLinks: false)
               .whereType<File>()
-              .where((file) => file.path.endsWith('_secret_qrcode_payload.json'))
+              .where(
+                (file) => file.path.endsWith('_secret_qrcode_payload.json'),
+              )
               .toList();
 
       if (files.isNotEmpty) {

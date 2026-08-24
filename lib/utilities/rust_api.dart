@@ -3,7 +3,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart'
-    as frb show Uint64List;
+    as frb
+    show Uint64List;
 import 'package:secluso_flutter/src/rust/api.dart' as raw;
 import 'package:secluso_flutter/utilities/logger.dart';
 
@@ -62,6 +63,7 @@ Future<String> flutterAddCamera({
   required String pairingToken,
   required String credentialsFull,
   required bool android,
+  required String subscriptionUuid,
 }) => raw.flutterAddCamera(
   cameraName: _cameraNameWithTrace(cameraName),
   ip: ip,
@@ -72,7 +74,12 @@ Future<String> flutterAddCamera({
   pairingToken: pairingToken,
   credentialsFull: credentialsFull,
   android: android,
+  subscriptionUuid: subscriptionUuid,
 );
+
+/// The subscription the paired camera bills against
+Future<String> subscriptionUuidFor({required String cameraName}) =>
+    raw.subscriptionUuidFor(cameraName: _cameraNameWithTrace(cameraName));
 
 Future<void> shutdownApp() => raw.shutdownApp();
 
@@ -103,6 +110,20 @@ Future<String> getGroupName({
 }) => raw.getGroupName(
   clientTag: clientTag,
   cameraName: _cameraNameWithTrace(cameraName),
+);
+
+Future<String> objectNameFor({
+  required String clientTag,
+  required String cameraName,
+  required String groupName,
+  required int epoch,
+  String kind = '',
+}) => raw.objectNameFor(
+  clientTag: clientTag,
+  cameraName: _cameraNameWithTrace(cameraName),
+  groupName: groupName,
+  epoch: BigInt.from(epoch),
+  kind: kind,
 );
 
 Future<bool> livestreamUpdate({

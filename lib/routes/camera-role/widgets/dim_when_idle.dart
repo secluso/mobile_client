@@ -68,13 +68,36 @@ class _DimWhenIdleState extends State<DimWhenIdle> {
     return Listener(
       behavior: HitTestBehavior.translucent,
       onPointerDown: _wake,
-      child: AnimatedOpacity(
-        opacity: _dim ? 0 : 1,
-        duration: Duration(milliseconds: _dim ? 1200 : 180),
-        curve: Curves.easeOut,
-        // While dark, the first touch only wakes the screen. It must not also
-        // press whatever happens to be under the finger.
-        child: AbsorbPointer(absorbing: _dim, child: widget.child),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          AnimatedOpacity(
+            opacity: _dim ? 0 : 1,
+            duration: Duration(milliseconds: _dim ? 1200 : 180),
+            curve: Curves.easeOut,
+            // While dark, the first touch only wakes the screen. It must not
+            // also press whatever happens to be under the finger.
+            child: AbsorbPointer(absorbing: _dim, child: widget.child),
+          ),
+          // A dark phone looks like a dead phone.
+          // Leave the faintest trace so someone glancing at it knows it is working and how to check.
+          IgnorePointer(
+            child: AnimatedOpacity(
+              opacity: _dim ? 1 : 0,
+              duration: const Duration(milliseconds: 1200),
+              child: const Center(
+                child: Text(
+                  'Recording. Tap to see status.',
+                  style: TextStyle(
+                    color: Color(0x33FFFFFF),
+                    fontSize: 13,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

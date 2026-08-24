@@ -6,7 +6,7 @@
 import 'frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `android_camera_specs_to_json`, `camera_hub_thread`
+// These functions are ignored because they are not marked as `pub`: `android_camera_specs_to_json`, `camera_hub_thread`, `init_hub_diagnostics`
 
 Future<String> getAndroidCameraSpecsJson({
   required int displayWidth,
@@ -35,11 +35,13 @@ Future<void> startAndroidCameraHub({
   required String serverUsername,
   required String serverPassword,
   required String serverAddr,
+  required String serverBackend,
 }) => RustLib.instance.api.crateApiStartAndroidCameraHub(
   workDir: workDir,
   serverUsername: serverUsername,
   serverPassword: serverPassword,
   serverAddr: serverAddr,
+  serverBackend: serverBackend,
 );
 
 Future<void> resetAndroidCameraHub({
@@ -47,11 +49,13 @@ Future<void> resetAndroidCameraHub({
   required String serverUsername,
   required String serverPassword,
   required String serverAddr,
+  required String serverBackend,
 }) => RustLib.instance.api.crateApiResetAndroidCameraHub(
   workDir: workDir,
   serverUsername: serverUsername,
   serverPassword: serverPassword,
   serverAddr: serverAddr,
+  serverBackend: serverBackend,
 );
 
 Future<void> stopAndroidCameraHub() =>

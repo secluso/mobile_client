@@ -28,6 +28,11 @@ import java.net.Socket
 class MainActivity : FlutterActivity() {
 
     companion object {
+        init {
+            // Flutter opens this library with dlopen, which never runs JNI_OnLoad.
+            System.loadLibrary("rust_lib_secluso_camera")
+        }
+
         // Each active stream gets its own queue
         private val queues = ConcurrentHashMap<Int, LinkedBlockingQueue<ByteArray>>()
         private var nextId = 1

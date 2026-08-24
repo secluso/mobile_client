@@ -540,16 +540,14 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
     case 'account_subscriptions':
       return AccountPage(
         email: 'you@example.com',
-        monthlyTotal: '\$22',
-        plans: _sampleAccountPlans,
-        onOpenPlan: (_) {},
-        onAttachPlan: (_) {},
-        onCancelPlan: (_) {},
+        plan: _sampleAccountPlan,
+        onOpenCamera: (_) {},
+        onChangePlan: () {},
+        onCancel: () {},
         onSignOut: () {},
       );
     case 'plans':
       return PlansPage(
-        cameraName: 'Front Door',
         offers: _samplePlanOffers,
         onChoose: (_) {},
       );
@@ -557,8 +555,6 @@ Widget? designLabTargetPage(String target, {String themeName = 'dark'}) {
       return CameraPlanPage(
         detail: _sampleCameraPlan,
         onShare: () {},
-        onChangePlan: () {},
-        onCancel: () {},
       );
     case 'share_camera':
       return ShareCameraPage(
@@ -1616,26 +1612,19 @@ const _samplePlanOffers = <PlanOffer>[
   ),
 ];
 
-const _sampleAccountPlans = <AccountPlan>[
-  AccountPlan(
-    tier: PlanTier.premium,
-    cameraName: 'Front Door',
-    price: r'$6/mo',
-    renewal: 'renews Jul 28',
-  ),
-  AccountPlan(
-    tier: PlanTier.anonymous,
-    cameraName: 'Backyard',
-    price: r'$10/mo',
-    renewal: 'renews Jul 28',
-    shared: true,
-  ),
-  AccountPlan(
-    tier: PlanTier.premium,
-    price: r'$6/mo',
-    renewal: 'not on a camera',
-  ),
-];
+const _sampleAccountPlan = AccountPlanSummary(
+  tier: PlanTier.premium,
+  price: r'$6/mo',
+  renewal: 'renews Jul 28',
+  usedLabel: '320 GB',
+  limitLabel: '1 TB',
+  usedFraction: 0.32,
+  viewersNote: 'up to 6 viewers',
+  cameras: [
+    AccountCamera(name: 'Front Door', usage: '210 GB'),
+    AccountCamera(name: 'Backyard', usage: '110 GB', shared: true),
+  ],
+);
 
 const _sampleSharedPeople = <SharedPerson>[
   SharedPerson(name: 'You', role: 'Owner', isOwner: true),

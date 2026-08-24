@@ -332,9 +332,7 @@ class GenericCameraQrPayload {
     );
   }
 
-  factory GenericCameraQrPayload.android({
-    required Uint8List rawQrBytes,
-  }) {
+  factory GenericCameraQrPayload.android({required Uint8List rawQrBytes}) {
     return GenericCameraQrPayload._(
       kind: GenericCameraQrKind.android,
       rawQrBytes: rawQrBytes,
@@ -440,8 +438,16 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
     Exception? error,
   ) {
     if (!mounted) return;
+    if (error != null) {
+      Log.w('QR scanner error: $error');
+    }
     setState(() {
-      _scannerErrorMessage = error?.toString();
+      // TODO: Make this debug mode only.
+      _scannerErrorMessage =
+          error == null
+              ? null
+              : "This phone's camera can't be used right now. You can enter "
+                  'the code instead.';
     });
   }
 
@@ -522,7 +528,8 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
     final prefs = await SharedPreferences.getInstance();
 
     final localServerAddr = prefs.getString(PrefKeys.serverAddr)?.trim();
-    final localServerUsername = prefs.getString(PrefKeys.serverUsername)?.trim();
+    final localServerUsername =
+        prefs.getString(PrefKeys.serverUsername)?.trim();
 
     if (localServerAddr != payload.addAppServerAddr ||
         localServerUsername != payload.addAppServerUsername) {
@@ -539,6 +546,70 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
     if (text == null || text.isEmpty) {
       return;
     }
+    await _handleScannedText(text);
+  }
+
+  /// For phones whose camera can't be used (no permission, etc).
+  /// Mainly testing purposes.
+  /// TODO: Remove this in production.
+  Future<void> _enterCodeManually() async {
+    final controller = TextEditingController();
+    final text = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Enter the camera code'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'On the camera phone, the code is shown under the QR. Paste '
+                'or type it here.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 2,
+                maxLines: 4,
+                decoration: InputDecoration(
+                  hintText: '{"v":"v1.2","cs":"..."}',
+                  suffixIcon: IconButton(
+                    tooltip: 'Paste',
+                    icon: const Icon(Icons.content_paste),
+                    onPressed: () async {
+                      final data = await Clipboard.getData('text/plain');
+                      final pasted = data?.text?.trim();
+                      if (pasted != null && pasted.isNotEmpty) {
+                        controller.text = pasted;
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(null),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed:
+                  () => Navigator.of(dialogContext).pop(controller.text.trim()),
+              child: const Text('Continue'),
+            ),
+          ],
+        );
+      },
+    );
+    if (text == null || text.isEmpty || !mounted) return;
+    await _handleScannedText(text);
+  }
+
+  Future<void> _handleScannedText(String text) async {
+    if (_handlingScan) return;
 
     final payload = _parseCameraQr(text);
     if (payload == null) {
@@ -760,7 +831,26 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
               ? 'Checking camera access…'
               : _indicatorMessage,
       errorMessage: _scannerErrorMessage ?? _cameraPermissionMessage(),
-      actionArea: _cameraPermissionActions(context),
+      actionArea: _actionArea(context),
+    );
+  }
+
+  /// Permission buttons when needed
+  Widget _actionArea(BuildContext context) {
+    final permissionActions = _cameraPermissionActions(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (permissionActions != null) ...[
+          permissionActions,
+          const SizedBox(height: 8),
+        ],
+        TextButton(
+          onPressed: _handlingScan ? null : _enterCodeManually,
+          child: const Text("Can't scan? Enter the code instead"),
+        ),
+      ],
     );
   }
 }

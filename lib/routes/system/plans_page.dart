@@ -10,15 +10,17 @@ import 'package:secluso_flutter/routes/system/system_widgets.dart';
 
 class PlansPage extends StatelessWidget {
   const PlansPage({
-    required this.cameraName,
     required this.offers,
     required this.onChoose,
+    this.webBilling = false,
     super.key,
   });
 
-  final String cameraName;
   final List<PlanOffer> offers;
   final ValueChanged<PlanOffer> onChoose;
+
+  /// This build can't sell through a store (F-Droid) so use the web
+  final bool webBilling;
 
   @override
   Widget build(BuildContext context) {
@@ -31,7 +33,7 @@ class PlansPage extends StatelessWidget {
           children: [
             DetailHeader(
               title: 'Choose a plan',
-              eyebrow: 'Plan · $cameraName',
+              eyebrow: 'Your plan',
               palette: palette,
               compact: true,
             ),
@@ -46,6 +48,10 @@ class PlansPage extends StatelessWidget {
                 ),
               ),
             ),
+            if (webBilling) ...[
+              const SizedBox(height: 12),
+              _WebBillingNote(palette: palette),
+            ],
             const SizedBox(height: 14),
             for (final offer in offers) ...[
               _PlanCard(
@@ -57,7 +63,7 @@ class PlansPage extends StatelessWidget {
             ],
             const SizedBox(height: 8),
             Text(
-              'Add people to a camera later, they share its plan & bandwidth.',
+              'Add people to a camera later; they share your plan & bandwidth.',
               textAlign: TextAlign.center,
               style: palette.eyebrow.copyWith(
                 fontSize: 11,
@@ -67,6 +73,42 @@ class PlansPage extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Tells the user, before they tap, that picking a plan opens the web
+class _WebBillingNote extends StatelessWidget {
+  const _WebBillingNote({required this.palette});
+
+  final SystemPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(13, 11, 13, 11),
+      decoration: BoxDecoration(
+        color: palette.dim(0.03),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: palette.hairline),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.open_in_new_rounded, size: 15, color: palette.dim(0.5)),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Plans are set up on the web for this version. '
+              'Choosing one opens secluso.net.',
+              style: palette.emptyBody.copyWith(
+                fontSize: 12.5,
+                height: 1.4,
+                color: palette.dim(0.6),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -120,13 +162,10 @@ class _PlanCard extends StatelessWidget {
                           overflow: TextOverflow.ellipsis,
                           style: palette.planName.copyWith(
                             fontSize: 32,
-                            // Only the paid tiers colour their name; Free is
-                            // just type.
                             color:
                                 offer.tier == PlanTier.free
                                     ? palette.text
                                     : palette.tierColor(offer.tier),
-                            // Anonymous is the odd one out, and says so.
                             fontStyle:
                                 offer.tier == PlanTier.anonymous
                                     ? FontStyle.italic

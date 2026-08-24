@@ -383,6 +383,7 @@ pub fn flutter_add_camera(
     pairing_token: String,
     credentials_full: String,
     android: bool,
+    subscription_uuid: String,
 ) -> String {
     let (camera_name, trace_id) = split_trace_camera(&camera_name);
     let _trace_guard = logger::set_log_trace(trace_id);
@@ -414,6 +415,7 @@ pub fn flutter_add_camera(
             pairing_token,
             credentials_full,
             android,
+            subscription_uuid,
         )
     };
 
@@ -584,6 +586,75 @@ pub fn get_group_name(client_tag: String, camera_name: String) -> String {
         Err(e) => {
             info!("get_group_name error: {}", e);
             return format!("Error(get_group_name): {}", e);
+        }
+    }
+}
+
+/// The name an object is stored under on the enterprise delivery service.
+#[flutter_rust_bridge::frb]
+/// The subscription the paired camera bills against
+pub fn subscription_uuid_for(camera_name: String) -> String {
+    let (camera_name, trace_id) = split_trace_camera(&camera_name);
+    let _trace_guard = logger::set_log_trace(trace_id);
+    let channel = CHANNEL_FIXED;
+    let client_mutex = get_or_create_channel_mutex(&camera_name, channel);
+    let op = "subscription_uuid_for".to_string();
+    let mut client_guard = lock_client_or_return!(
+        client_mutex,
+        &camera_name,
+        channel,
+        &op,
+        trace_id,
+        String::new()
+    );
+    if !ensure_client_initialized(&mut *client_guard, &camera_name, channel) {
+        return String::new();
+    }
+
+    secluso_app_native::get_subscription_uuid(&*client_guard).unwrap_or_default()
+}
+
+pub fn object_name_for(
+    camera_name: String,
+    client_tag: String,
+    group_name: String,
+    epoch: u64,
+    kind: String,
+) -> String {
+    let (camera_name, trace_id) = split_trace_camera(&camera_name);
+    let _trace_guard = logger::set_log_trace(trace_id);
+    let channel = CHANNEL_FIXED;
+    let op = format!("object_name_for({})", client_tag);
+    let client_mutex = get_or_create_channel_mutex(&camera_name, channel);
+    let mut client_guard = lock_client_or_return!(
+        client_mutex,
+        &camera_name,
+        channel,
+        &op,
+        trace_id,
+        "Error: Busy".to_string()
+    );
+    if !ensure_client_initialized(&mut *client_guard, &camera_name, channel) {
+        return "Error".to_string();
+    }
+
+    let kind = if kind.is_empty() {
+        None
+    } else {
+        Some(kind.as_str())
+    };
+
+    match secluso_app_native::object_name_for(
+        &mut *client_guard,
+        &client_tag,
+        &group_name,
+        epoch,
+        kind,
+    ) {
+        Ok(name) => name,
+        Err(e) => {
+            info!("object_name_for error: {}", e);
+            format!("Error(object_name_for): {}", e)
         }
     }
 }
@@ -818,12 +889,13 @@ pub fn process_add_app_config_response(
         return vec![];
     }
 
+    // now returns (payload, new_app_name). 
     let ret = match secluso_app_native::process_add_app_config_response(
         &mut *client_guard,
         config_response,
         secret,
     ) {
-        Ok(new_app_data_vec) => new_app_data_vec,
+        Ok((new_app_data_vec, _new_app_name)) => new_app_data_vec,
         Err(e) => {
             info!("process_add_app_config_response error: {}", e);
             vec![]
@@ -861,7 +933,8 @@ pub fn join_camera_groups(
         secret,
         new_app_data_vec,
     ) {
-        Ok(epochs) => epochs.to_vec(),
+  
+        Ok((epochs, _new_app_name)) => epochs.to_vec(),
         Err(e) => {
             info!("join_camera_groups error: {}", e);
             vec![]

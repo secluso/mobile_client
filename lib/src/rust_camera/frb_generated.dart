@@ -85,6 +85,7 @@ abstract class RustLibApi extends BaseApi {
     required String serverUsername,
     required String serverPassword,
     required String serverAddr,
+    required String serverBackend,
   });
 
   Future<void> crateApiSetAndroidCameraSettings({
@@ -100,6 +101,7 @@ abstract class RustLibApi extends BaseApi {
     required String serverUsername,
     required String serverPassword,
     required String serverAddr,
+    required String serverBackend,
   });
 
   Future<void> crateApiStopAndroidCameraHub();
@@ -154,6 +156,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String serverUsername,
     required String serverPassword,
     required String serverAddr,
+    required String serverBackend,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -163,6 +166,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(serverUsername, serializer);
           sse_encode_String(serverPassword, serializer);
           sse_encode_String(serverAddr, serializer);
+          sse_encode_String(serverBackend, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -175,7 +179,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiResetAndroidCameraHubConstMeta,
-        argValues: [workDir, serverUsername, serverPassword, serverAddr],
+        argValues: [
+          workDir,
+          serverUsername,
+          serverPassword,
+          serverAddr,
+          serverBackend,
+        ],
         apiImpl: this,
       ),
     );
@@ -184,7 +194,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiResetAndroidCameraHubConstMeta =>
       const TaskConstMeta(
         debugName: "reset_android_camera_hub",
-        argNames: ["workDir", "serverUsername", "serverPassword", "serverAddr"],
+        argNames: [
+          "workDir",
+          "serverUsername",
+          "serverPassword",
+          "serverAddr",
+          "serverBackend",
+        ],
       );
 
   @override
@@ -234,6 +250,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required String serverUsername,
     required String serverPassword,
     required String serverAddr,
+    required String serverBackend,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -243,6 +260,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_String(serverUsername, serializer);
           sse_encode_String(serverPassword, serializer);
           sse_encode_String(serverAddr, serializer);
+          sse_encode_String(serverBackend, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -255,7 +273,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiStartAndroidCameraHubConstMeta,
-        argValues: [workDir, serverUsername, serverPassword, serverAddr],
+        argValues: [
+          workDir,
+          serverUsername,
+          serverPassword,
+          serverAddr,
+          serverBackend,
+        ],
         apiImpl: this,
       ),
     );
@@ -264,7 +288,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiStartAndroidCameraHubConstMeta =>
       const TaskConstMeta(
         debugName: "start_android_camera_hub",
-        argNames: ["workDir", "serverUsername", "serverPassword", "serverAddr"],
+        argNames: [
+          "workDir",
+          "serverUsername",
+          "serverPassword",
+          "serverAddr",
+          "serverBackend",
+        ],
       );
 
   @override

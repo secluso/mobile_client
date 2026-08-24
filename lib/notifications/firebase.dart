@@ -55,8 +55,8 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
     if (prefs.containsKey(PrefKeys.serverAddr)) {
       final fcmConfig = FcmConfig.fromPrefs(prefs);
       if (fcmConfig == null) {
-        Log.e("Missing cached FCM config; clearing server credentials");
-        await _invalidateServerCredentials(prefs);
+        // Legitimate on the official relay until it has FCM configured
+        Log.w("No cached FCM config; skipping Firebase init");
       } else {
         try {
           await FirebaseInit.ensure(fcmConfig);

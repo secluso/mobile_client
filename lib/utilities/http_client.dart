@@ -13,6 +13,10 @@ import 'package:secluso_flutter/notifications/epoch.dart';
 import 'package:secluso_flutter/notifications/ios_notification_relay.dart';
 import 'package:secluso_flutter/notifications/notifications.dart';
 import 'package:secluso_flutter/utilities/app_paths.dart';
+import 'package:secluso_flutter/utilities/enterprise_session.dart';
+import 'package:secluso_flutter/utilities/relay_environment.dart';
+import 'package:secluso_flutter/utilities/object_name.dart';
+import 'package:secluso_flutter/utilities/server_backend.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
 import 'package:secluso_flutter/utilities/app_coordination_state.dart';
 import 'package:secluso_flutter/utilities/http_entities.dart';
@@ -133,12 +137,46 @@ class HttpClientService {
   static final HttpClientService instance = HttpClientService._();
   Future<void>? _versionCheckInFlight;
   bool _versionMatchConfirmed = false;
+
+  /// Bearer tokens... when talking to the enterprise delivery service.
+  final EnterpriseSession _enterpriseSession = EnterpriseSession();
   static final Future<String> _versionFuture = rustLibVersion();
   static const Duration _groupNameInitCooldown = Duration(seconds: 30);
   static const Duration _groupNameInitTimeout = Duration(seconds: 8);
   final Map<String, DateTime> _groupNameInitLast = {};
   final Map<String, String> _groupNameCache = {};
+
+  // The session id for a livestream is stored in memory, keyed by the group name. It is not persisted across app restarts.
+  final Map<String, String> _livestreamSessions = {};
   final http.Client _client = http.Client();
+
+  /// cameraName -> subscription uuid
+  final Map<String, String> _cameraSubUuid = {};
+
+  /// The subscription a request should bill against
+  Future<String?> _subscriptionUuidFor(String? cameraName) async {
+    if (cameraName != null && cameraName.isNotEmpty) {
+      var uuid = _cameraSubUuid[cameraName];
+      if (uuid == null) {
+        try {
+          uuid = await subscriptionUuidFor(cameraName: cameraName);
+        } catch (_) {
+          uuid = '';
+        }
+        _cameraSubUuid[cameraName] = uuid;
+      }
+      if (uuid.isNotEmpty) {
+        return uuid;
+      }
+    }
+
+    final fallback = (await _pref(PrefKeys.subscriptionUuid))?.trim();
+    return (fallback == null || fallback.isEmpty) ? null : fallback;
+  }
+
+  void clearSubscriptionUuidCache(String cameraName) {
+    _cameraSubUuid.remove(cameraName);
+  }
 
   Future<http.Response> _cappedGetResponse(
     Uri url, {
@@ -221,29 +259,62 @@ class HttpClientService {
 
       final int epoch = await readEpoch(cameraName, "video");
 
-      convertedCameraList.add(MotionPair(motionGroup, epoch));
+      // The enterprise service looks objects up by their hashed name
+      String? filename;
+      if (creds.backend.isEnterprise) {
+        filename = await ObjectName.forEpoch(
+          cameraName: cameraName,
+          groupName: motionGroup,
+          epoch: epoch,
+        );
+      }
+
+      convertedCameraList.add(
+        MotionPair(motionGroup, epoch, filename: filename),
+      );
       associatedNameToGroup[motionGroup] = cameraName;
     }
     Log.d("Association map: $associatedNameToGroup");
 
-    var jsonContent = jsonEncode(MotionPairs(convertedCameraList));
-    Log.d("JSON content: $jsonContent");
+    // One camera, one subscription
+    final pairsBySub = <String?, List<MotionPair>>{};
+    final representativeCamera = <String?, String>{};
+    for (final pair in convertedCameraList) {
+      final cameraName = associatedNameToGroup[pair.groupName] as String;
+      final subUuid =
+          creds.backend.isEnterprise
+              ? await _subscriptionUuidFor(cameraName)
+              : null;
+      pairsBySub.putIfAbsent(subUuid, () => []).add(pair);
+      representativeCamera[subUuid] = cameraName;
+    }
+
     final url = _buildUrl(creds.serverAddr, ['bulkCheck']);
-    final headers = await _basicAuthHeaders(
-      creds.username,
-      creds.password,
-      jsonContent: true,
-    );
+    final List<dynamic> decoded = [];
+    for (final entry in pairsBySub.entries) {
+      final jsonContent = jsonEncode(MotionPairs(entry.value));
+      Log.d("JSON content: $jsonContent");
+      final headers = await _basicAuthHeaders(
+        creds.username,
+        creds.password,
+        jsonContent: true,
+        cameraName: representativeCamera[entry.key],
+      );
 
-    // Bulk check fetch action
-    final response = await http.post(url, headers: headers, body: jsonContent);
-    await _handleServerVersionHeader(response);
-    final responseBody =
-        response
-            .body; // Format is comma separated strings representing the associated motion groups
-    Log.d("Server response: $responseBody");
+      // Bulk check fetch action
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: jsonContent,
+      );
+      await _handleServerVersionHeader(response);
+      final responseBody =
+          response
+              .body; // Format is comma separated strings representing the associated motion groups
+      Log.d("Server response: $responseBody");
 
-    final List<dynamic> decoded = jsonDecode(responseBody);
+      decoded.addAll(jsonDecode(responseBody) as List<dynamic>);
+    }
     final List<String> convertedToGroups = [];
     final now =
         DateTime.now().millisecondsSinceEpoch ~/
@@ -266,7 +337,7 @@ class HttpClientService {
   Future<Result<String>> fetchServerVersion() =>
       _wrap(() async => _fetchServerVersionRaw(), bypassVersionGate: true);
 
-  /// POST /pair — waits for camera to join pairing
+  /// POST /pair, waits for camera to join pairing
   Future<Result<String>> waitForPairingStatus({
     required String pairingToken,
   }) => _wrap(() async {
@@ -371,15 +442,23 @@ class HttpClientService {
   });
 
   /// Downloads fcm config
+  ///
+  /// `backend` is for callers validating credentials that aren't saved yet
   Future<Result<FcmConfig>> fetchFcmConfigWithCredentials({
     required String serverAddr,
     required String username,
     required String password,
+    ServerBackend? backend,
   }) => _wrap(() async {
     Log.d("Fetching fcm config from server");
 
     final url = _buildUrl(serverAddr, ['fcm_config']);
-    final headers = await _basicAuthHeaders(username, password);
+    final headers = await _basicAuthHeaders(
+      username,
+      password,
+      serverAddr: serverAddr,
+      backend: backend,
+    );
 
     // Fetch fcm config action
     final response = await _cappedGetResponse(
@@ -413,6 +492,182 @@ class HttpClientService {
     );
   }
 
+  /// GET /usage on the enterprise relay.
+  Future<Result<({String tier, int storedBytes, Map<String, int> byGroup})>>
+  fetchAccountUsage() => _wrap(() async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) {
+      throw SilentException('Usage is only reported by the Secluso relay');
+    }
+    final url = _buildUrl(creds.serverAddr, ['usage']);
+    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final response = await http
+        .get(url, headers: headers)
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw SilentException(
+        'Failed to fetch usage: ${response.statusCode} ${response.reasonPhrase}',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw SilentException('Unexpected usage payload');
+    }
+    final tier = decoded['tier'];
+    final stored = decoded['stored_bytes'];
+    final byGroup = <String, int>{};
+    final rawGroups = decoded['by_group'];
+    if (rawGroups is List) {
+      for (final entry in rawGroups) {
+        if (entry is Map &&
+            entry['group_key'] is String &&
+            entry['bytes'] is int) {
+          byGroup[entry['group_key'] as String] = entry['bytes'] as int;
+        }
+      }
+    }
+    return (
+      tier: tier is String ? tier : 'free',
+      storedBytes: stored is int ? stored : 0,
+      byGroup: byGroup,
+    );
+  });
+
+  Future<Map<String, int>> perCameraBytes(Map<String, int> byGroup) async {
+    if (byGroup.isEmpty) return const {};
+    final cameras = await AppCoordinationState.getCameraSet();
+    final result = <String, int>{};
+    for (final cameraName in cameras) {
+      var total = 0;
+      var matched = false;
+      final seen = <String>{};
+      for (final group in const [Group.motion, Group.thumbnail]) {
+        final name = await _groupName(cameraName, group);
+
+        if (name.startsWith('Error') || !seen.add(name)) continue;
+        final bytes = byGroup[name];
+        if (bytes != null) {
+          total += bytes;
+          matched = true;
+        }
+      }
+      if (matched) result[cameraName] = total;
+    }
+    return result;
+  }
+
+  Future<Result<({String tier, String status, bool active})>> verifyPurchase({
+    required String platform,
+    String? purchaseToken,
+    String? transactionId,
+    String? environment,
+  }) => _wrap(() async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) {
+      throw SilentException(
+        'In-app purchases are only sold on the Secluso relay',
+      );
+    }
+    final url = _buildUrl(creds.serverAddr, ['billing', 'verify']);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      jsonContent: true,
+    );
+    final payload = <String, dynamic>{
+      'platform': platform,
+      if (purchaseToken != null) 'purchase_token': purchaseToken,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (environment != null) 'environment': environment,
+    };
+    final response = await http
+        .post(url, headers: headers, body: jsonEncode(payload))
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw SilentException(
+        'Purchase verification failed: ${response.statusCode} ${response.body}',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw SilentException('Unexpected verify payload');
+    }
+    return (
+      tier: decoded['tier'] is String ? decoded['tier'] as String : 'premium',
+      status:
+          decoded['status'] is String ? decoded['status'] as String : 'active',
+      active: decoded['active'] == true,
+    );
+  });
+
+  Future<({String? premium, int? updatedAtSeconds})> fetchPricing() async {
+    final creds = await _getValidatedCredentials();
+    final url = _buildUrl(creds.serverAddr, ['billing', 'pricing']);
+    final response = await http
+        .get(url, headers: RelayEnvironment.stagingHeaders())
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      return (premium: null, updatedAtSeconds: null);
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) return (premium: null, updatedAtSeconds: null);
+    final premium = decoded['premium'];
+    final updated = decoded['updated_at'];
+    return (
+      premium: premium is String ? premium : null,
+      updatedAtSeconds: updated is int ? updated : null,
+    );
+  }
+
+  Future<({String tier, int? expiresAt})?> currentSubscription() async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) return null;
+    final token = await _enterpriseSession.accessToken(
+      serverAddr: creds.serverAddr,
+      username: creds.username,
+      password: creds.password,
+    );
+    final subs = EnterpriseSession.subsFromToken(token);
+    if (subs.isEmpty) return null;
+    final sub = subs.first as Map<String, dynamic>;
+    final tier = sub['tier'] is String ? sub['tier'] as String : 'free';
+    final exp = sub['expires_at'];
+    return (tier: tier, expiresAt: exp is int ? exp : null);
+  }
+
+  Future<List<String>> _objectPath({
+    required String cameraName,
+    required String type,
+    required String group,
+    required String serverFile,
+  }) async {
+    if (!(await _backend()).isEnterprise) {
+      return [group, serverFile];
+    }
+
+    final epoch = int.tryParse(serverFile);
+    if (epoch == null) {
+      return [group, serverFile];
+    }
+
+    final hashed = switch (type) {
+      Group.thumbnail => await ObjectName.forThumbnail(
+        cameraName: cameraName,
+        groupName: group,
+        epoch: epoch,
+      ),
+      _ => await ObjectName.forEpoch(
+        cameraName: cameraName,
+        groupName: group,
+        epoch: epoch,
+      ),
+    };
+    if (hashed.isEmpty || hashed.startsWith("Error")) {
+      return [group, serverFile];
+    }
+    return [hashed];
+  }
+
   /// Downloads file and saves as [fileName]
   Future<Result<DownloadResult>> download({
     String? destinationFile,
@@ -426,8 +681,20 @@ class HttpClientService {
     Log.d(
       "Camera Name: $cameraName, Group Type: $type, Group: $group, Server File: $serverFile",
     );
-    final url = _buildUrl(creds.serverAddr, [group, serverFile]);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final url = _buildUrl(
+      creds.serverAddr,
+      await _objectPath(
+        cameraName: cameraName,
+        type: type,
+        group: group,
+        serverFile: serverFile,
+      ),
+    );
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
 
     // Video download action
     final Future<http.Response> responseFuture = _cappedGetResponse(
@@ -488,8 +755,20 @@ class HttpClientService {
     Log.d(
       "Camera Name: $cameraName, Group Type: $type, Group: $group, Server File: $serverFile",
     );
-    final url = _buildUrl(creds.serverAddr, [group, serverFile]);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final url = _buildUrl(
+      creds.serverAddr,
+      await _objectPath(
+        cameraName: cameraName,
+        type: type,
+        group: group,
+        serverFile: serverFile,
+      ),
+    );
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
 
     // Delete action TODO: Should we retry if fail?
     final delResponse = await http.delete(url, headers: headers);
@@ -513,49 +792,95 @@ class HttpClientService {
     final creds = await _getValidatedCredentials();
 
     final url = _buildUrl(creds.serverAddr, ['fcm_token']);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
 
-    final response = await http.post(url, headers: headers, body: token);
-    await _handleServerVersionHeader(response);
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Failed to send data: ${response.statusCode} ${response.reasonPhrase}',
+    // Token rows are subscription-scoped
+    for (final cameraName in await _notificationCameraScopes(creds)) {
+      final headers = await _basicAuthHeaders(
+        creds.username,
+        creds.password,
+        cameraName: cameraName,
       );
-    } else {
-      Log.d("Successfully sent data");
+
+      final response = await http.post(url, headers: headers, body: token);
+      await _handleServerVersionHeader(response);
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Failed to send data: ${response.statusCode} ${response.reasonPhrase}',
+        );
+      } else {
+        Log.d("Successfully sent data");
+      }
     }
   });
+
+  Future<List<String?>> _notificationCameraScopes(
+    ({
+      String serverAddr,
+      String username,
+      String password,
+      ServerBackend backend,
+    })
+    creds,
+  ) async {
+    if (!creds.backend.isEnterprise) {
+      return const [null];
+    }
+
+    final seen = <String?>{};
+    final scopes = <String?>[];
+    for (final cameraName in await AppCoordinationState.getCameraSet()) {
+      final subUuid = await _subscriptionUuidFor(cameraName);
+      if (seen.add(subUuid)) {
+        scopes.add(cameraName);
+      }
+    }
+
+    return scopes.isEmpty ? const [null] : scopes;
+  }
 
   /// POST /notification_target
   Future<Result<void>> uploadNotificationTarget() => _wrap(() async {
     final creds = await _getValidatedCredentials();
     final target = await _buildNotificationTargetPayload();
 
+    // FCM is fully supported on the enterprise Secluso relay
+    // Registers through a different endpoint.
+    if (creds.backend.isEnterprise &&
+        target.platform == AndroidPushTransport.fcm) {
+      Log.d('FCM push registers via /fcm_token, not /notification_target');
+      return;
+    }
+
     final url = _buildUrl(creds.serverAddr, ['notification_target']);
-    final headers = await _basicAuthHeaders(
-      creds.username,
-      creds.password,
-      jsonContent: true,
-    );
     Log.d(
       'Uploading notification target '
       '(url=$url, platform=${target.platform}, '
       'hasIosRelayBinding=${target.iosRelayBinding != null})',
     );
 
-    final response = await http.post(
-      url,
-      headers: headers,
-      body: jsonEncode(target),
-    );
-    await _handleServerVersionHeader(response);
-
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Failed to upload notification target: '
-        '${response.statusCode} ${response.reasonPhrase} ${response.body}',
+    // Target rows are subscription-scoped, same as FCM tokens above.
+    for (final cameraName in await _notificationCameraScopes(creds)) {
+      final headers = await _basicAuthHeaders(
+        creds.username,
+        creds.password,
+        jsonContent: true,
+        cameraName: cameraName,
       );
+
+      final response = await http.post(
+        url,
+        headers: headers,
+        body: jsonEncode(target),
+      );
+      await _handleServerVersionHeader(response);
+
+      if (response.statusCode != 200) {
+        throw Exception(
+          'Failed to upload notification target: '
+          '${response.statusCode} ${response.reasonPhrase} ${response.body}',
+        );
+      }
     }
   });
 
@@ -565,7 +890,11 @@ class HttpClientService {
 
     final group = await _groupName(cameraName, Group.livestream);
     final url = _buildUrl(creds.serverAddr, ['livestream', group]);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
 
     final response = await http.post(url, headers: headers);
     await _handleServerVersionHeader(response);
@@ -573,6 +902,14 @@ class HttpClientService {
       throw Exception(
         'Failed to send data: ${response.statusCode} ${response.reasonPhrase}',
       );
+    }
+
+    // If the server is enterprise, it will return a session id in the response body. We store that in memory for later use when retrieving chunks.
+    if ((await _backend()).isEnterprise) {
+      final session = _sessionFromStatusBody(response.body);
+      if (session != null) {
+        _livestreamSessions[group] = session;
+      }
     }
   });
 
@@ -583,15 +920,32 @@ class HttpClientService {
     required int chunkNumber,
   }) => _wrap(() async {
     final creds = await _getValidatedCredentials();
-
     final group = await _groupName(cameraName, Group.livestream);
     final url = _buildUrl(creds.serverAddr, ['livestream', group, chunkNumber]);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
 
+    final enterprise = (await _backend()).isEnterprise;
+    if (enterprise) {
+      final session = await _livestreamSession(
+        creds.serverAddr,
+        group,
+        headers,
+      );
+      if (session == null) {
+        throw SilentException('No active livestream session for $group');
+      }
+      headers['X-Livestream-Session'] = session;
+    }
+    // A stalled connection must not hang the stream page
     final response = await _cappedGetResponse(
       url,
       headers: headers,
       maxBytes: maxLivestreamFileSize,
+      timeout: const Duration(seconds: 15),
     );
     await _handleServerVersionHeader(response);
     if (response.statusCode != 200) {
@@ -604,25 +958,96 @@ class HttpClientService {
       throw Exception(message);
     }
 
-    // Delete action
-    final delUrl = _buildUrl(creds.serverAddr, [group, chunkNumber]);
-    final delResponse = await http.delete(delUrl, headers: headers);
-    await _handleServerVersionHeader(delResponse);
-    if (delResponse.statusCode != 200) {
-      throw Exception(
-        'Failed to delete video from server: ${delResponse.statusCode} ${delResponse.reasonPhrase}',
-      );
+    // Delete action.
+    if (!enterprise) {
+      final delUrl = _buildUrl(creds.serverAddr, [group, chunkNumber]);
+      final delResponse = await http.delete(delUrl, headers: headers);
+      await _handleServerVersionHeader(delResponse);
+      if (delResponse.statusCode != 200) {
+        throw Exception(
+          'Failed to delete video from server: ${delResponse.statusCode} ${delResponse.reasonPhrase}',
+        );
+      }
     }
 
     return response.bodyBytes;
   });
 
+  /// GET /livestream/<group> to retrieve the session id for an enterprise livestream
+  Future<String?> _livestreamSession(
+    String serverAddr,
+    String group,
+    Map<String, String> headers,
+  ) async {
+    final cached = _livestreamSessions[group];
+    if (cached != null) {
+      return cached;
+    }
+
+    final url = _buildUrl(serverAddr, ['livestream', group]);
+    final response = await http
+        .get(url, headers: headers)
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      return null;
+    }
+
+    final session = _sessionFromStatusBody(response.body);
+    if (session != null) {
+      _livestreamSessions[group] = session;
+    }
+    return session;
+  }
+
+  String? _sessionFromStatusBody(String body) {
+    try {
+      final decoded = jsonDecode(body);
+      final session = decoded is Map ? decoded['session'] : null;
+      return session is String && session.isNotEmpty ? session : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// The delivery service's livestream event socket
+  Future<WebSocket?> livestreamEventSocket(String cameraName) async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) {
+      return null;
+    }
+
+    final group = await _groupName(cameraName, Group.livestream);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
+    final addr = creds.serverAddr
+        .replaceFirst('https://', 'wss://')
+        .replaceFirst('http://', 'ws://');
+
+    try {
+      return await WebSocket.connect(
+        '$addr/livestream/$group',
+        headers: headers,
+      ).timeout(const Duration(seconds: 5));
+    } catch (e) {
+      Log.d('Livestream event socket unavailable, using timers: $e');
+      return null;
+    }
+  }
+
   /// POST /livestream_end/<group>
   Future<Result<void>> livestreamEnd(String cameraName) => _wrap(() async {
     final creds = await _getValidatedCredentials();
     final group = await _groupName(cameraName, Group.livestream);
+    _livestreamSessions.remove(group);
     final url = _buildUrl(creds.serverAddr, ['livestream_end', group]);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
 
     final response = await http.post(url, headers: headers);
     await _handleServerVersionHeader(response);
@@ -646,11 +1071,14 @@ class HttpClientService {
       throw Exception('Error: empty config command');
     }
 
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
     headers['X-Command-Size'] = command.length.toString();
 
-    final response = await http
-        .post(url, headers: headers, body: command);
+    final response = await http.post(url, headers: headers, body: command);
 
     await _handleServerVersionHeader(response);
 
@@ -672,7 +1100,11 @@ class HttpClientService {
 
     final group = await _groupName(cameraName, Group.config);
     final url = _buildUrl(creds.serverAddr, ['config_response', group]);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      cameraName: cameraName,
+    );
 
     final response = await _cappedGetResponse(
       url,
@@ -721,21 +1153,21 @@ class HttpClientService {
 
   Future<Result<void>> sendMsg(String msgTag, Uint8List data) =>
       _wrap(() async {
-    final creds = await _getValidatedCredentials();
+        final creds = await _getValidatedCredentials();
 
-    final url = _buildUrl(creds.serverAddr, ['send_msg', msgTag]);
-    final headers = await _basicAuthHeaders(creds.username, creds.password);
-    headers[HttpHeaders.contentTypeHeader] = 'application/octet-stream';
+        final url = _buildUrl(creds.serverAddr, ['send_msg', msgTag]);
+        final headers = await _basicAuthHeaders(creds.username, creds.password);
+        headers[HttpHeaders.contentTypeHeader] = 'application/octet-stream';
 
-    final response = await http.post(url, headers: headers, body: data);
-    await _handleServerVersionHeader(response);
+        final response = await http.post(url, headers: headers, body: data);
+        await _handleServerVersionHeader(response);
 
-    if (response.statusCode != 200) {
-      throw Exception(
-        'Server error: ${response.statusCode} ${response.reasonPhrase}',
-      );
-    }
-  });
+        if (response.statusCode != 200) {
+          throw Exception(
+            'Server error: ${response.statusCode} ${response.reasonPhrase}',
+          );
+        }
+      });
 
   /// Utility methods below
 
@@ -881,22 +1313,56 @@ class HttpClientService {
     return base.replace(pathSegments: pathSegments);
   }
 
+  /// Attach whatever the server we are talking to expects.
   Future<Map<String, String>> _basicAuthHeaders(
     String username,
     String password, {
     bool jsonContent = false,
+    String? serverAddr,
+    ServerBackend? backend,
+    String? cameraName,
   }) async {
+    final resolved = backend ?? await _backend();
+
+    if (resolved.isEnterprise) {
+      // Resolve the address ourselves when the caller didn't pass one.
+      final resolvedAddr =
+          serverAddr ?? (await _pref(PrefKeys.serverAddr))?.trim();
+      if (resolvedAddr == null || resolvedAddr.isEmpty) {
+        throw SilentException('Missing server address for enterprise auth');
+      }
+
+      final token = await _enterpriseSession.accessToken(
+        serverAddr: resolvedAddr,
+        username: username,
+        password: password,
+      );
+
+      // Which of the account's subscriptions this device works under.
+      final subscriptionUuid = (await _pref(PrefKeys.subscriptionUuid))?.trim();
+
+      return {
+        HttpHeaders.authorizationHeader: 'Bearer $token',
+        if (subscriptionUuid != null && subscriptionUuid.isNotEmpty)
+          'X-Subscription-Uuid': subscriptionUuid,
+        if (jsonContent) HttpHeaders.contentTypeHeader: 'application/json',
+        ...RelayEnvironment.stagingHeaders(),
+      };
+    }
+
     final credentials = base64Encode(utf8.encode('$username:$password'));
     if (jsonContent) {
       return {
         HttpHeaders.authorizationHeader: 'Basic $credentials',
         HttpHeaders.contentTypeHeader: 'application/json',
         'Client-Version': await _versionFuture,
+        ...RelayEnvironment.stagingHeaders(),
       };
     } else {
       return {
         HttpHeaders.authorizationHeader: 'Basic $credentials',
         'Client-Version': await _versionFuture,
+        ...RelayEnvironment.stagingHeaders(),
       };
     }
   }
@@ -922,7 +1388,14 @@ class HttpClientService {
     ].every((value) => value != null && value.isNotEmpty);
   }
 
-  Future<({String serverAddr, String username, String password})>
+  Future<
+    ({
+      String serverAddr,
+      String username,
+      String password,
+      ServerBackend backend,
+    })
+  >
   _getValidatedCredentials() async {
     final serverAddr = await _pref(PrefKeys.serverAddr);
     final username = await _pref(PrefKeys.serverUsername);
@@ -940,6 +1413,30 @@ class HttpClientService {
       serverAddr: serverAddr!.trim(),
       username: username!.trim(),
       password: password!.trim(),
+      backend: await _backend(),
+    );
+  }
+
+  Future<ServerBackend> _backend() async =>
+      ServerBackend.parse(await _pref(PrefKeys.serverBackend));
+
+  Future<void> setServerBackend(ServerBackend backend) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(PrefKeys.serverBackend, backend.wireName);
+    // A different server means a different account; the old token is meaningless.
+    _enterpriseSession.clear();
+  }
+
+  Future<void> registerIfEnterprise() async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) {
+      return;
+    }
+
+    await _enterpriseSession.register(
+      serverAddr: creds.serverAddr,
+      username: creds.username,
+      password: creds.password,
     );
   }
 

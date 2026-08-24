@@ -134,6 +134,57 @@ class AccountPlan {
   bool get isOpenSlot => cameraName == null;
 }
 
+/// The account's single plan, shared across all its cameras.
+@immutable
+class AccountPlanSummary {
+  const AccountPlanSummary({
+    required this.tier,
+    required this.price,
+    required this.renewal,
+    required this.usedLabel,
+    required this.limitLabel,
+    required this.usedFraction,
+    required this.viewersNote,
+    required this.cameras,
+  });
+
+  final PlanTier tier;
+
+  /// e.g. "$6/mo". Lives on the account, not the camera.
+  final String price;
+
+  /// e.g. "renews Jul 28".
+  final String renewal;
+
+  /// Used side of the storage meter, e.g. "320 GB".
+  final String usedLabel;
+
+  /// Total side of the meter, e.g. "1 TB".
+  final String limitLabel;
+
+  /// 0.0 to 1.0, how full the shared allowance is.
+  final double usedFraction;
+
+  /// e.g. "up to 6 viewers".
+  final String viewersNote;
+
+  /// The cameras drawing on this plan.
+  final List<AccountCamera> cameras;
+}
+
+@immutable
+class AccountCamera {
+  const AccountCamera({required this.name, this.usage, this.shared = false});
+
+  final String name;
+
+  /// This camera's slice of the shared storage
+  final String? usage;
+
+  /// Someone else has been given access to this camera.
+  final bool shared;
+}
+
 /// Someone a camera has been shared with.
 @immutable
 class SharedPerson {
@@ -158,28 +209,31 @@ class CameraPlanDetail {
   const CameraPlanDetail({
     required this.cameraName,
     required this.tier,
-    required this.meta,
     required this.line,
-    required this.storedOnRelay,
-    required this.storedLimit,
-    required this.motionClips,
-    required this.livestream,
     required this.people,
+    this.meta,
+    this.storedOnRelay,
+    this.storedLimit,
+    this.motionClips,
+    this.livestream,
   });
 
   final String cameraName;
   final PlanTier tier;
 
-  /// Mono line: price, quality, renewal.
-  final String meta;
+  /// Mono line: quality/renewal context.
+  final String? meta;
 
   /// One sentence on what the tier means for you.
   final String line;
 
-  final String storedOnRelay;
-  final String storedLimit;
-  final String motionClips;
-  final String livestream;
+  /// Per-camera usage.
+  final String? storedOnRelay;
+  final String? storedLimit;
+  final String? motionClips;
+  final String? livestream;
+
+  bool get hasUsage => storedOnRelay != null;
 
   final List<SharedPerson> people;
 }

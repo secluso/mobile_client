@@ -293,9 +293,15 @@ extension MP4H264Demuxer {
     /// with an arbitrary fallback.
     @inline(__always)
     func currentFrameDuration() -> CMTime {
-        // VUI-only timing; refuse to schedule until SPS timing is known.
-        guard let d = derivedFrameDur, d.isValid else { return .invalid }
-        return d
+        // SPS VUI timing 
+        // Android's MediaCodec does not; fall back to ~33 ms
+        // Frames are scheduled no earlier than they arrive anyway
+        if let d = derivedFrameDur, d.isValid { return d }
+        if !warnedNoVuiTiming {
+            warnedNoVuiTiming = true
+            emitDebug("[MP4] no SPS VUI timing; assuming 30 fps for scheduling")
+        }
+        return CMTime(value: 1, timescale: 30)
     }
     // Computes the next presentation timestamp aligned to the display layer’s timebase, keeping
     /// a small lead to avoid late frames. The first frame after configuration anchors the timebase

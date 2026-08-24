@@ -10,7 +10,7 @@ import 'package:secluso_flutter/routes/system/system_marks.dart';
 import 'package:secluso_flutter/routes/system/system_theme.dart';
 import 'package:secluso_flutter/routes/system/system_widgets.dart';
 
-/// "What's this phone's job?"
+/// "How will you use this phone?"
 class RoleChoicePage extends StatelessWidget {
   const RoleChoicePage({
     required this.onWatchCameras,
@@ -27,20 +27,23 @@ class RoleChoicePage extends StatelessWidget {
     return _SetupScaffold(
       palette: palette,
       step: 1,
-      title: "What's this phone's job?",
+      title: 'How will you use this phone?',
+      body:
+          'Secluso runs on two phones: one you carry to watch, and a spare one '
+          'you set down to be the camera. Which is this one?',
       footnote: 'You can change this later.',
       choices: [
         _Choice(
           mark: RoleViewerMark(palette: palette),
-          tag: 'Most people',
+          tag: 'Most people start here',
           title: 'Watch my cameras',
-          subtitle: 'The phone you carry.',
+          subtitle: 'The phone you carry. Alerts and live video arrive here.',
           onTap: onWatchCameras,
         ),
         _Choice(
           mark: RoleCameraMark(palette: palette),
-          title: 'Be a camera',
-          subtitle: 'A spare Android phone that keeps watch.',
+          title: 'Turn it into a camera',
+          subtitle: 'A spare Android phone you leave somewhere to keep watch.',
           onTap: onBeCamera,
         ),
       ],
@@ -53,18 +56,23 @@ class RelayChoicePage extends StatelessWidget {
   const RelayChoicePage({
     required this.onSeclusoRelay,
     required this.onSelfHosted,
+    this.hasRoleStep = true,
     super.key,
   });
 
   final VoidCallback onSeclusoRelay;
   final VoidCallback onSelfHosted;
 
+  /// Whether step 1 (what is this phone for) exists on this platform.
+  final bool hasRoleStep;
+
   @override
   Widget build(BuildContext context) {
     final palette = SystemPalette.of(context);
     return _SetupScaffold(
       palette: palette,
-      step: 2,
+      step: hasRoleStep ? 2 : 1,
+      totalSteps: hasRoleStep ? 2 : 1,
       title: 'Who runs your relay?',
       body:
           'It carries your encrypted clips from camera to phone, and it can never '
@@ -97,12 +105,14 @@ class _SetupScaffold extends StatelessWidget {
     required this.footnote,
     required this.choices,
     this.body,
+    this.totalSteps = 2,
   });
 
   final SystemPalette palette;
 
-  /// Which of the two setup steps this is.
+  /// Which of the setup steps this is, and how many there are.
   final int step;
+  final int totalSteps;
 
   final String title;
   final String? body;
@@ -119,7 +129,7 @@ class _SetupScaffold extends StatelessWidget {
           padding: const EdgeInsets.fromLTRB(24, 14, 24, 26),
           children: [
             const SizedBox(height: 10),
-            _Stepper(step: step, palette: palette),
+            _Stepper(step: step, totalSteps: totalSteps, palette: palette),
             const SizedBox(height: 14),
             Text(title, style: palette.title),
             if (bodyText != null) ...[
@@ -150,16 +160,21 @@ class _SetupScaffold extends StatelessWidget {
 
 /// Two bars and a label, so the pair of screens reads as one guided flow.
 class _Stepper extends StatelessWidget {
-  const _Stepper({required this.step, required this.palette});
+  const _Stepper({
+    required this.step,
+    required this.palette,
+    this.totalSteps = 2,
+  });
 
   final int step;
+  final int totalSteps;
   final SystemPalette palette;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       children: [
-        for (var i = 1; i <= 2; i++) ...[
+        for (var i = 1; i <= totalSteps; i++) ...[
           if (i > 1) const SizedBox(width: 6),
           Container(
             width: 26,
@@ -175,7 +190,7 @@ class _Stepper extends StatelessWidget {
         ],
         const SizedBox(width: 12),
         Text(
-          'SETUP · STEP $step OF 2',
+          totalSteps == 1 ? 'SETUP' : 'SETUP · STEP $step OF $totalSteps',
           style: palette.eyebrow.copyWith(letterSpacing: 10 * 0.2),
         ),
       ],

@@ -1,7 +1,11 @@
 //! SPDX-License-Identifier: GPL-3.0-or-later
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
+import 'package:secluso_flutter/database/app_stores.dart';
 import 'package:secluso_flutter/database/entities.dart';
+import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/routes/activity_page.dart';
 import 'package:secluso_flutter/routes/camera/list_cameras.dart';
 import 'package:secluso_flutter/routes/camera/camera_ui_bridge.dart';
@@ -11,6 +15,7 @@ import 'package:secluso_flutter/ui/secluso_preview_assets.dart';
 import 'package:secluso_flutter/ui/secluso_shell_ui.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
 import 'package:secluso_flutter/utilities/review_environment.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AppShell extends StatefulWidget {
   const AppShell({
@@ -58,10 +63,49 @@ class _AppShellState extends State<AppShell> {
   bool get _isReviewMode => !widget.preview && _reviewSession != null;
   bool get _usesPreviewContent => widget.preview || _isReviewMode;
 
+  /// First-run gating... No tabs until the relay is connected and a first camera is paired.
+  late final VoidCallback _setupListener;
+
+  bool get _setupLocked {
+    if (_usesPreviewContent) return false;
+    final relay = CameraUiBridge.relayConnected.value;
+    final count = CameraUiBridge.cameraCount.value;
+    return relay != true || count == null || count == 0;
+  }
+
+  int get _lockedIndex {
+    final relay = CameraUiBridge.relayConnected.value;
+    if (relay == false) return 2;
+    if (relay == true && CameraUiBridge.cameraCount.value == 0) return 0;
+    return _index;
+  }
+
+  Future<void> _seedSetupState() async {
+    final prefs = await SharedPreferences.getInstance();
+    CameraUiBridge.relayConnected.value ??=
+        (prefs.getString(PrefKeys.serverAddr) ?? '').isNotEmpty;
+    if (CameraUiBridge.cameraCount.value == null) {
+      if (!AppStores.isInitialized) {
+        await AppStores.init();
+      }
+      final cameras = await AppStores.instance.cameraStore.getAllAsync();
+      CameraUiBridge.cameraCount.value ??= cameras.length;
+    }
+  }
+
   @override
   void initState() {
     super.initState();
     _index = widget.initialIndex;
+    _setupListener = () {
+      if (!mounted) return;
+      setState(() {});
+    };
+    CameraUiBridge.relayConnected.addListener(_setupListener);
+    CameraUiBridge.cameraCount.addListener(_setupListener);
+    if (!widget.preview) {
+      unawaited(_seedSetupState());
+    }
     _reviewSession = ReviewEnvironment.instance.session;
     _errorBadgeListener = () => _refreshSettingsAlertBadge();
     _reviewEnvironmentListener = _handleReviewEnvironmentChanged;
@@ -95,6 +139,8 @@ class _AppShellState extends State<AppShell> {
 
   @override
   void dispose() {
+    CameraUiBridge.relayConnected.removeListener(_setupListener);
+    CameraUiBridge.cameraCount.removeListener(_setupListener);
     ReviewEnvironment.instance.removeListener(_reviewEnvironmentListener);
     Log.errorNotifier.removeListener(_errorBadgeListener);
     if (CameraUiBridge.refreshActivityCallback != null) {
@@ -422,15 +468,18 @@ class _AppShellState extends State<AppShell> {
       onTap: _handleTabTap,
     );
 
+    final locked = _setupLocked;
+    final index = locked ? _lockedIndex : _index;
+
     return ShellScaffold(
       safeTop: false,
       body: Stack(
         children: [
           Positioned.fill(
-            bottom: _index == 0 ? 0 : navHeight,
-            child: IndexedStack(index: _index, children: tabs),
+            bottom: (locked || index == 0) ? 0 : navHeight,
+            child: IndexedStack(index: index, children: tabs),
           ),
-          Positioned(left: 0, right: 0, bottom: 0, child: navBar),
+          if (!locked) Positioned(left: 0, right: 0, bottom: 0, child: navBar),
         ],
       ),
     );

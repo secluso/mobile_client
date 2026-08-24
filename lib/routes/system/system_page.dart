@@ -19,6 +19,7 @@ class SystemPage extends StatelessWidget {
     required this.onAddCamera,
     required this.onOpenCamera,
     this.accountEmail,
+    this.plan,
     this.onManageAccount,
     super.key,
   });
@@ -29,6 +30,8 @@ class SystemPage extends StatelessWidget {
   /// Account the relay subscription belongs to. Null on a self-hosted relay,
   /// which has no account.
   final String? accountEmail;
+
+  final CameraPlan? plan;
 
   final VoidCallback onOpenRelay;
   final VoidCallback onAddCamera;
@@ -47,12 +50,7 @@ class SystemPage extends StatelessWidget {
         children: [
           Text('System', style: palette.title),
           const SizedBox(height: 2),
-          Text(
-            _hasPlans
-                ? 'Your relay and per-camera plans.'
-                : 'Your relay and cameras.',
-            style: palette.subtitle,
-          ),
+          Text('Your relay and cameras.', style: palette.subtitle),
           _RelayRow(
             relay: relay,
             palette: palette,
@@ -63,6 +61,13 @@ class SystemPage extends StatelessWidget {
           if (accountEmail != null && onManageAccount != null)
             _AccountRow(
               email: accountEmail!,
+              palette: palette,
+              onTap: onManageAccount!,
+            ),
+          // One plan for the account, shared across the cameras below.
+          if (_hasPlans && plan != null && onManageAccount != null)
+            _PlanSummaryRow(
+              plan: plan!,
               palette: palette,
               onTap: onManageAccount!,
             ),
@@ -87,7 +92,7 @@ class SystemPage extends StatelessWidget {
 
     return [
       _SectionHead(
-        label: _hasPlans ? 'Cameras & Plans' : 'Cameras',
+        label: 'Cameras',
         palette: palette,
         // The managed relay offers a way to add; the self-hosted one just
         // reports how many are up.
@@ -215,6 +220,67 @@ class _AccountRow extends StatelessWidget {
                   const SizedBox(height: 5),
                   Text(
                     email,
+                    overflow: TextOverflow.ellipsis,
+                    style: palette.accountEmail,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text('Manage', style: palette.action),
+            Icon(Icons.chevron_right_rounded, size: 18, color: palette.blue),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PlanSummaryRow extends StatelessWidget {
+  const _PlanSummaryRow({
+    required this.plan,
+    required this.palette,
+    required this.onTap,
+  });
+
+  final CameraPlan plan;
+  final SystemPalette palette;
+  final VoidCallback onTap;
+
+  Color get _tierColor => switch (plan.tier) {
+    PlanTier.free => palette.warmDim,
+    PlanTier.premium => palette.blue,
+    PlanTier.anonymous => palette.mint,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return _Tappable(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 17),
+        decoration: BoxDecoration(
+          border: Border(bottom: BorderSide(color: palette.hairline)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('PLAN', style: palette.eyebrow),
+                  const SizedBox(height: 6),
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: plan.tier.label,
+                          style: TextStyle(color: _tierColor),
+                        ),
+                        TextSpan(text: '  ·  ${plan.usage}'),
+                      ],
+                    ),
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: palette.accountEmail,
                   ),

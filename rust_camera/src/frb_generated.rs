@@ -111,6 +111,7 @@ fn wire__crate__api__reset_android_camera_hub_impl(
             let api_server_username = <String>::sse_decode(&mut deserializer);
             let api_server_password = <String>::sse_decode(&mut deserializer);
             let api_server_addr = <String>::sse_decode(&mut deserializer);
+            let api_server_backend = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -119,6 +120,7 @@ fn wire__crate__api__reset_android_camera_hub_impl(
                         api_server_username,
                         api_server_password,
                         api_server_addr,
+                        api_server_backend,
                     )?;
                     Ok(output_ok)
                 })())
@@ -195,6 +197,7 @@ fn wire__crate__api__start_android_camera_hub_impl(
             let api_server_username = <String>::sse_decode(&mut deserializer);
             let api_server_password = <String>::sse_decode(&mut deserializer);
             let api_server_addr = <String>::sse_decode(&mut deserializer);
+            let api_server_backend = <String>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -203,6 +206,7 @@ fn wire__crate__api__start_android_camera_hub_impl(
                         api_server_username,
                         api_server_password,
                         api_server_addr,
+                        api_server_backend,
                     )?;
                     Ok(output_ok)
                 })())

@@ -1,6 +1,7 @@
 //! SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
@@ -30,7 +31,8 @@ import 'package:secluso_flutter/ui/secluso_theme.dart';
 import 'package:secluso_flutter/utilities/video_thumbnail_store.dart';
 import 'dart:io';
 
-const _livestreamStaleChunkThreshold = Duration(seconds: 4);
+// Covers the camera's pipeline warmup before chunk 1
+const _livestreamStaleChunkThreshold = Duration(seconds: 10);
 
 class LivestreamPage extends StatefulWidget {
   final String cameraName;
@@ -196,6 +198,54 @@ class _LivestreamPageState extends State<LivestreamPage>
     }
   }
 
+  // Push channel for chunk arrivals. Null falls back to timer polling.
+  WebSocket? _eventSocket;
+  StreamController<void>? _chunkSignal;
+
+  Future<void> _connectEventSocket() async {
+    _chunkSignal ??= StreamController<void>.broadcast();
+    final socket = await HttpClientService.instance.livestreamEventSocket(
+      widget.cameraName,
+    );
+    if (socket == null || !mounted || !isStreaming) {
+      await socket?.close();
+      return;
+    }
+    _eventSocket = socket;
+    socket.listen(
+      (data) {
+        try {
+          final event = jsonDecode(data as String);
+          if (event is Map && event['type'] == 'chunk') {
+            _chunkSignal?.add(null);
+          }
+        } catch (_) {}
+      },
+      onError: (_) => _eventSocket = null,
+      onDone: () => _eventSocket = null,
+      cancelOnError: true,
+    );
+  }
+
+  Future<void> _waitForChunk(Duration timeout) async {
+    final signal = _chunkSignal;
+    if (signal == null || _eventSocket == null) {
+      await Future.delayed(timeout);
+      return;
+    }
+    try {
+      await signal.stream.first.timeout(timeout);
+    } on TimeoutException {}
+  }
+
+  Future<void> _closeEventSocket() async {
+    final socket = _eventSocket;
+    _eventSocket = null;
+    await socket?.close();
+    await _chunkSignal?.close();
+    _chunkSignal = null;
+  }
+
   Future<void> _startLivestream() async {
     Log.d('Entered method');
 
@@ -268,6 +318,7 @@ class _LivestreamPageState extends State<LivestreamPage>
 
           setState(() => isStreaming = true);
           _streamPaused = false;
+          unawaited(_connectEventSocket());
           _chunkPumpFuture = _startChunkPump();
           startSucceeded = true;
           return;
@@ -334,8 +385,9 @@ class _LivestreamPageState extends State<LivestreamPage>
       if (res == true) {
         return true;
       }
-      if (++attempt > 5) {
-        _fail('Could not retrieve commit message after 5 retries');
+      // The camera needs a moment to notice the request, commit, and upload chunk 0
+      if (++attempt > 15) {
+        _fail('Could not retrieve commit message after 15 retries');
         return false;
       }
       await Future.delayed(const Duration(seconds: 1));
@@ -500,10 +552,10 @@ class _LivestreamPageState extends State<LivestreamPage>
             'Chunk $chunk error after fetch=${snapshot.completedAtMs - snapshot.startedAtMs} ms '
             '(sinceLastSuccess=$sinceLastSuccessMs ms): $errText',
           );
+          // 404 just means the camera hasn't uploaded this chunk yet
           if (!_isClosing &&
-              (errText.contains('404 Not Found') ||
-                  sinceLastSuccessMs >=
-                      _livestreamStaleChunkThreshold.inMilliseconds)) {
+              sinceLastSuccessMs >=
+                  _livestreamStaleChunkThreshold.inMilliseconds) {
             final pauseReason =
                 errText.contains('404 Not Found')
                     ? 'No new video received for chunk $chunk'
@@ -511,12 +563,11 @@ class _LivestreamPageState extends State<LivestreamPage>
             _pauseLivestream(pauseReason);
             return;
           }
+          await _waitForChunk(const Duration(milliseconds: 500));
           currentFetch = _fetchChunkSnapshot(chunk);
           // TODO: At some point, we should stop trying to find more chunks... show user an error. Also, what if a user closes out of the page? This continues on.
         },
       );
-
-      await Future.delayed(const Duration(milliseconds: 300));
     }
 
     Log.d('Pump exited');
@@ -524,6 +575,7 @@ class _LivestreamPageState extends State<LivestreamPage>
 
   //finish / error
   Future<void> _finishNativeStream() async {
+    await _closeEventSocket();
     final id = _streamId;
     if (id != null) {
       _streamId = null;
