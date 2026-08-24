@@ -18,6 +18,36 @@ class _NoCameraCard extends StatelessWidget {
           _ScanningForCamerasCard(metrics: metrics, onAdd: onAdd)
         else
           _LightScanningState(metrics: metrics, onAdd: onAdd),
+        SizedBox(height: metrics.scaled(10)),
+        // The tabs stay hidden until the first camera is paired
+        Center(
+          child: TextButton(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder:
+                      (_) => Scaffold(
+                        appBar: AppBar(title: const Text('Relay & account')),
+                        body: const ServerPage(
+                          showBackButton: false,
+                          showShellChrome: true,
+                        ),
+                      ),
+                ),
+              );
+            },
+            child: Text(
+              'Relay & account settings',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color:
+                    dark
+                        ? Colors.white.withValues(alpha: 0.45)
+                        : const Color(0xFF6B7280),
+                fontSize: metrics.scaled(10),
+              ),
+            ),
+          ),
+        ),
       ],
     );
   }
@@ -62,7 +92,7 @@ class _RelayReadyBanner extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Relay connected and ready',
+                    'Relay connected',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       color: const Color(0xFF34D399),
                       fontSize: metrics.scaled(12),
@@ -72,7 +102,7 @@ class _RelayReadyBanner extends StatelessWidget {
                   ),
                   SizedBox(height: metrics.scaled(2)),
                   Text(
-                    'Secure tunnel established',
+                    'Your account is ready. Next: add a camera.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color:
                           dark
@@ -109,7 +139,7 @@ class _ScanningForCamerasCard extends StatelessWidget {
         gapLength: metrics.scaled(4),
       ),
       child: Container(
-        height: metrics.scaled(284),
+        height: metrics.scaled(298),
         decoration: BoxDecoration(
           color: const Color(0x08000000),
           borderRadius: BorderRadius.circular(metrics.scaled(16)),
@@ -142,7 +172,7 @@ class _ScanningForCamerasCard extends StatelessWidget {
               right: 0,
               top: metrics.scaled(167),
               child: Text(
-                'Scanning for cameras...',
+                'No cameras yet',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   color: Colors.white.withValues(alpha: 0.7),
@@ -157,7 +187,7 @@ class _ScanningForCamerasCard extends StatelessWidget {
               right: metrics.scaled(20),
               top: metrics.scaled(187),
               child: Text(
-                'Add your first camera to start monitoring',
+                'Set up your spare phone as a camera, then scan its code here.',
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Colors.white.withValues(alpha: 0.4),
@@ -169,7 +199,7 @@ class _ScanningForCamerasCard extends StatelessWidget {
             Positioned(
               left: 0,
               right: 0,
-              top: metrics.scaled(219.5),
+              top: metrics.scaled(232),
               child: Center(
                 child: Material(
                   color: const Color(0xFF8BB3EE),
@@ -213,7 +243,7 @@ class _LightScanningState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: metrics.scaled(284),
+      height: metrics.scaled(298),
       child: Stack(
         clipBehavior: Clip.none,
         children: [
@@ -230,7 +260,7 @@ class _LightScanningState extends StatelessWidget {
                 gapLength: metrics.scaled(4),
               ),
               child: Container(
-                height: metrics.scaled(284),
+                height: metrics.scaled(298),
                 decoration: BoxDecoration(
                   color: const Color(0x80FFFBEB),
                   borderRadius: BorderRadius.circular(metrics.scaled(16)),
@@ -265,7 +295,7 @@ class _LightScanningState extends StatelessWidget {
                       right: 0,
                       top: metrics.scaled(167),
                       child: Text(
-                        'Scanning for cameras...',
+                        'No cameras yet',
                         textAlign: TextAlign.center,
                         style: Theme.of(
                           context,
@@ -282,7 +312,7 @@ class _LightScanningState extends StatelessWidget {
                       right: metrics.scaled(20),
                       top: metrics.scaled(187),
                       child: Text(
-                        'Add your first camera to start monitoring',
+                        'Set up your spare phone as a camera, then scan its code here.',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: const Color(0xFF6B7280),
@@ -294,7 +324,7 @@ class _LightScanningState extends StatelessWidget {
                     Positioned(
                       left: 0,
                       right: 0,
-                      top: metrics.scaled(219.5),
+                      top: metrics.scaled(232),
                       child: Center(
                         child: Material(
                           color: const Color(0xFF8BB3EE),

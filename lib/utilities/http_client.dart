@@ -14,6 +14,7 @@ import 'package:secluso_flutter/notifications/ios_notification_relay.dart';
 import 'package:secluso_flutter/notifications/notifications.dart';
 import 'package:secluso_flutter/utilities/app_paths.dart';
 import 'package:secluso_flutter/utilities/enterprise_session.dart';
+import 'package:secluso_flutter/utilities/relay_environment.dart';
 import 'package:secluso_flutter/utilities/object_name.dart';
 import 'package:secluso_flutter/utilities/server_backend.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
@@ -491,6 +492,149 @@ class HttpClientService {
     );
   }
 
+  /// GET /usage on the enterprise relay.
+  Future<Result<({String tier, int storedBytes, Map<String, int> byGroup})>>
+  fetchAccountUsage() => _wrap(() async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) {
+      throw SilentException('Usage is only reported by the Secluso relay');
+    }
+    final url = _buildUrl(creds.serverAddr, ['usage']);
+    final headers = await _basicAuthHeaders(creds.username, creds.password);
+    final response = await http
+        .get(url, headers: headers)
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) {
+      throw SilentException(
+        'Failed to fetch usage: ${response.statusCode} ${response.reasonPhrase}',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw SilentException('Unexpected usage payload');
+    }
+    final tier = decoded['tier'];
+    final stored = decoded['stored_bytes'];
+    final byGroup = <String, int>{};
+    final rawGroups = decoded['by_group'];
+    if (rawGroups is List) {
+      for (final entry in rawGroups) {
+        if (entry is Map &&
+            entry['group_key'] is String &&
+            entry['bytes'] is int) {
+          byGroup[entry['group_key'] as String] = entry['bytes'] as int;
+        }
+      }
+    }
+    return (
+      tier: tier is String ? tier : 'free',
+      storedBytes: stored is int ? stored : 0,
+      byGroup: byGroup,
+    );
+  });
+
+  Future<Map<String, int>> perCameraBytes(Map<String, int> byGroup) async {
+    if (byGroup.isEmpty) return const {};
+    final cameras = await AppCoordinationState.getCameraSet();
+    final result = <String, int>{};
+    for (final cameraName in cameras) {
+      var total = 0;
+      var matched = false;
+      final seen = <String>{};
+      for (final group in const [Group.motion, Group.thumbnail]) {
+        final name = await _groupName(cameraName, group);
+
+        if (name.startsWith('Error') || !seen.add(name)) continue;
+        final bytes = byGroup[name];
+        if (bytes != null) {
+          total += bytes;
+          matched = true;
+        }
+      }
+      if (matched) result[cameraName] = total;
+    }
+    return result;
+  }
+
+  Future<Result<({String tier, String status, bool active})>> verifyPurchase({
+    required String platform,
+    String? purchaseToken,
+    String? transactionId,
+    String? environment,
+  }) => _wrap(() async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) {
+      throw SilentException(
+        'In-app purchases are only sold on the Secluso relay',
+      );
+    }
+    final url = _buildUrl(creds.serverAddr, ['billing', 'verify']);
+    final headers = await _basicAuthHeaders(
+      creds.username,
+      creds.password,
+      jsonContent: true,
+    );
+    final payload = <String, dynamic>{
+      'platform': platform,
+      if (purchaseToken != null) 'purchase_token': purchaseToken,
+      if (transactionId != null) 'transaction_id': transactionId,
+      if (environment != null) 'environment': environment,
+    };
+    final response = await http
+        .post(url, headers: headers, body: jsonEncode(payload))
+        .timeout(const Duration(seconds: 20));
+    if (response.statusCode != 200) {
+      throw SilentException(
+        'Purchase verification failed: ${response.statusCode} ${response.body}',
+      );
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) {
+      throw SilentException('Unexpected verify payload');
+    }
+    return (
+      tier: decoded['tier'] is String ? decoded['tier'] as String : 'premium',
+      status:
+          decoded['status'] is String ? decoded['status'] as String : 'active',
+      active: decoded['active'] == true,
+    );
+  });
+
+  Future<({String? premium, int? updatedAtSeconds})> fetchPricing() async {
+    final creds = await _getValidatedCredentials();
+    final url = _buildUrl(creds.serverAddr, ['billing', 'pricing']);
+    final response = await http
+        .get(url, headers: RelayEnvironment.stagingHeaders())
+        .timeout(const Duration(seconds: 10));
+    if (response.statusCode != 200) {
+      return (premium: null, updatedAtSeconds: null);
+    }
+    final decoded = jsonDecode(response.body);
+    if (decoded is! Map) return (premium: null, updatedAtSeconds: null);
+    final premium = decoded['premium'];
+    final updated = decoded['updated_at'];
+    return (
+      premium: premium is String ? premium : null,
+      updatedAtSeconds: updated is int ? updated : null,
+    );
+  }
+
+  Future<({String tier, int? expiresAt})?> currentSubscription() async {
+    final creds = await _getValidatedCredentials();
+    if (!creds.backend.isEnterprise) return null;
+    final token = await _enterpriseSession.accessToken(
+      serverAddr: creds.serverAddr,
+      username: creds.username,
+      password: creds.password,
+    );
+    final subs = EnterpriseSession.subsFromToken(token);
+    if (subs.isEmpty) return null;
+    final sub = subs.first as Map<String, dynamic>;
+    final tier = sub['tier'] is String ? sub['tier'] as String : 'free';
+    final exp = sub['expires_at'];
+    return (tier: tier, expiresAt: exp is int ? exp : null);
+  }
+
   Future<List<String>> _objectPath({
     required String cameraName,
     required String type,
@@ -699,6 +843,14 @@ class HttpClientService {
   Future<Result<void>> uploadNotificationTarget() => _wrap(() async {
     final creds = await _getValidatedCredentials();
     final target = await _buildNotificationTargetPayload();
+
+    // FCM is fully supported on the enterprise Secluso relay
+    // Registers through a different endpoint.
+    if (creds.backend.isEnterprise &&
+        target.platform == AndroidPushTransport.fcm) {
+      Log.d('FCM push registers via /fcm_token, not /notification_target');
+      return;
+    }
 
     final url = _buildUrl(creds.serverAddr, ['notification_target']);
     Log.d(
@@ -1194,6 +1346,7 @@ class HttpClientService {
         if (subscriptionUuid != null && subscriptionUuid.isNotEmpty)
           'X-Subscription-Uuid': subscriptionUuid,
         if (jsonContent) HttpHeaders.contentTypeHeader: 'application/json',
+        ...RelayEnvironment.stagingHeaders(),
       };
     }
 
@@ -1203,11 +1356,13 @@ class HttpClientService {
         HttpHeaders.authorizationHeader: 'Basic $credentials',
         HttpHeaders.contentTypeHeader: 'application/json',
         'Client-Version': await _versionFuture,
+        ...RelayEnvironment.stagingHeaders(),
       };
     } else {
       return {
         HttpHeaders.authorizationHeader: 'Basic $credentials',
         'Client-Version': await _versionFuture,
+        ...RelayEnvironment.stagingHeaders(),
       };
     }
   }

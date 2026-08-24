@@ -8,6 +8,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
 import 'package:secluso_flutter/utilities/firebase_init.dart';
+import 'package:secluso_flutter/utilities/billing_service.dart';
+import 'package:secluso_flutter/utilities/relay_environment.dart';
 import 'package:flutter/services.dart';
 import 'package:secluso_flutter/notifications/heartbeat_task.dart';
 import 'package:secluso_flutter/notifications/scheduler.dart';
@@ -38,6 +40,7 @@ import 'package:secluso_flutter/utilities/version_gate.dart';
 import 'package:secluso_flutter/utilities/ui_state.dart';
 import 'package:secluso_flutter/utilities/review_environment.dart';
 import 'package:secluso_flutter/keys.dart';
+import 'package:secluso_flutter/routes/server_page.dart';
 import 'package:secluso_flutter/constants.dart';
 import 'package:secluso_flutter/ui/secluso_surfaces.dart';
 import 'package:secluso_flutter/ui/font_licenses.dart';
@@ -161,6 +164,11 @@ void main([List<String> args = const []]) {
           return true;
         };
         unawaited(Log.ensureStorageReady());
+        // Resolve which official relay (prod / staging) to use
+        await RelayEnvironment.load();
+        // Wire up the in-app-purchase stream early ensuring that a purchase that completes out of band
+        // e.g. a renewal, an interrupted checkout is okay
+        unawaited(BillingService.instance.init());
         runApp(
           AppBootstrap(
             initialDarkMode: initialDarkMode,
@@ -1006,7 +1014,13 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
     final role = prefs.getString(PrefKeys.deviceRole);
 
     if (role == DeviceRoleController.cameraRole && cameraRoleSupported) {
-      _show(_pairingPage());
+      if (!hasRelay) {
+        _show(_cameraRelaySetupPage());
+        return;
+      }
+      // A paired camera phone comes back to its status page. Not to setup.
+      final paired = await AndroidCameraHubLauncher.hasCompletedFirstPairing();
+      _show(paired ? _recordingPage() : _pairingPage());
       return;
     }
 
@@ -1135,8 +1149,16 @@ class _StartupRoleGateState extends State<StartupRoleGate> {
     }
 
     await DeviceRoleController.setCameraRole();
-    _show(_pairingPage());
+    final prefs = await SharedPreferences.getInstance();
+    final hasRelay = (prefs.getString(PrefKeys.serverAddr) ?? '').isNotEmpty;
+    _show(hasRelay ? _pairingPage() : _cameraRelaySetupPage());
   }
+
+  Widget _cameraRelaySetupPage() => ServerPage(
+    showBackButton: false,
+    showShellChrome: true,
+    onRelayConnected: () => _show(_pairingPage()),
+  );
 
   Future<void> _resetCameraAndReturnToPairing() async {
     await AndroidCameraHubLauncher.resetCameraState();

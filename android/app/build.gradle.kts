@@ -76,7 +76,14 @@ val fdroidBuildEnabled =
             providers.gradleProperty("dart-defines").orNull ?: System.getProperty("dart-defines")
         )["SECLUSO_FDROID_BUILD"] == "true"
 val fdroidExcludedPluginNames =
-    setOf("firebase_core", "firebase_messaging", "objectbox_flutter_libs")
+    setOf(
+        "firebase_core",
+        "firebase_messaging",
+        "objectbox_flutter_libs",
+        // In-app purchase pulls in Google Play Billing (proprietary).
+        // FDroid does not use this. Uses Stripe.
+        "in_app_purchase_android",
+    )
 val fdroidGeneratedRegistrantDir =
     layout.buildDirectory.dir("generated/source/secluso/fdroid")
 val generateFdroidGeneratedPluginRegistrant =

@@ -9,6 +9,7 @@ import 'package:secluso_flutter/database/entities.dart';
 import 'package:secluso_flutter/routes/camera/new/qr_scan.dart';
 import 'package:secluso_flutter/routes/camera/view_camera.dart';
 import 'package:secluso_flutter/routes/camera/view_video.dart';
+import 'package:secluso_flutter/routes/server_page.dart';
 import 'package:secluso_flutter/ui/google_fonts.dart';
 import 'package:secluso_flutter/ui/secluso_shell_ui.dart';
 

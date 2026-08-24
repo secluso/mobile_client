@@ -12,15 +12,11 @@ class CameraPlanPage extends StatelessWidget {
   const CameraPlanPage({
     required this.detail,
     required this.onShare,
-    required this.onChangePlan,
-    required this.onCancel,
     super.key,
   });
 
   final CameraPlanDetail detail;
   final VoidCallback onShare;
-  final VoidCallback onChangePlan;
-  final VoidCallback onCancel;
 
   String get _sharedSummary {
     final others = detail.people.where((p) => !p.isOwner).toList();
@@ -51,7 +47,7 @@ class CameraPlanPage extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text("THIS CAMERA'S PLAN", style: palette.eyebrow),
+                        Text('ON YOUR PLAN', style: palette.eyebrow),
                         const SizedBox(height: 9),
                         Text(
                           detail.tier.label,
@@ -76,31 +72,41 @@ class CameraPlanPage extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
-            Text(detail.meta, style: palette.planMeta),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Text(
               detail.line,
               style: palette.emptyBody.copyWith(fontSize: 13, height: 1.5),
             ),
 
-            SectionHead(label: 'This month', palette: palette, topGap: 26),
-            StatRow(
-              label: 'Stored on relay',
-              value: detail.storedOnRelay,
-              trailing: 'of ${detail.storedLimit}',
-              palette: palette,
-            ),
-            StatRow(
-              label: 'Motion clips',
-              value: detail.motionClips,
-              palette: palette,
-            ),
-            StatRow(
-              label: 'Livestream',
-              value: detail.livestream,
-              palette: palette,
-            ),
+            if (detail.hasUsage) ...[
+              SectionHead(
+                label: 'This camera, this month',
+                palette: palette,
+                topGap: 26,
+              ),
+              if (detail.storedOnRelay != null)
+                StatRow(
+                  label: 'Stored on relay',
+                  value: detail.storedOnRelay!,
+                  trailing:
+                      detail.storedLimit != null
+                          ? 'of your ${detail.storedLimit}'
+                          : null,
+                  palette: palette,
+                ),
+              if (detail.motionClips != null)
+                StatRow(
+                  label: 'Motion clips',
+                  value: detail.motionClips!,
+                  palette: palette,
+                ),
+              if (detail.livestream != null)
+                StatRow(
+                  label: 'Livestream',
+                  value: detail.livestream!,
+                  palette: palette,
+                ),
+            ],
 
             SectionHead(
               label: 'Shared with',
@@ -138,18 +144,17 @@ class CameraPlanPage extends StatelessWidget {
               ),
             ),
 
-            LinkRow(
-              label: 'Change plan',
-              palette: palette,
-              onTap: onChangePlan,
-              topGap: 32,
-            ),
-            LinkRow(
-              label: 'Cancel subscription',
-              palette: palette,
-              onTap: onCancel,
-              danger: true,
-              showChevron: false,
+            Padding(
+              padding: const EdgeInsets.only(top: 30),
+              child: Text(
+                'This camera shares your account plan. Manage the plan itself '
+                'from Account.',
+                style: palette.emptyBody.copyWith(
+                  fontSize: 12.5,
+                  height: 1.45,
+                  color: palette.dim(0.4),
+                ),
+              ),
             ),
           ],
         ),

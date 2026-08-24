@@ -22,12 +22,17 @@ import 'package:secluso_flutter/utilities/firebase_init.dart';
 import 'package:secluso_flutter/utilities/http_client.dart';
 import 'package:secluso_flutter/utilities/server_backend.dart';
 import 'package:secluso_flutter/utilities/enterprise_session.dart';
+import 'package:secluso_flutter/utilities/billing_service.dart';
+import 'package:secluso_flutter/utilities/distribution.dart';
+import 'package:secluso_flutter/utilities/relay_environment.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:secluso_flutter/routes/system/relay_account_page.dart';
 import 'package:secluso_flutter/routes/system/account_page.dart';
 import 'package:secluso_flutter/routes/system/camera_plan_page.dart';
 import 'package:secluso_flutter/routes/system/plans_page.dart';
 import 'package:secluso_flutter/routes/system/relay_detail_page.dart';
 import 'package:secluso_flutter/routes/system/setup_choice_page.dart';
+import 'package:secluso_flutter/routes/camera-role/platform.dart';
 import 'package:secluso_flutter/routes/system/share_camera_page.dart';
 import 'package:secluso_flutter/routes/system/system_models.dart';
 import 'package:secluso_flutter/routes/system/system_page.dart';
@@ -99,8 +104,9 @@ class UserCredentialsQrPayload {
 
 const String _officialRelayConnectionKind = 'official';
 
-/// Where the official relay is (not self hosted)
-const String _officialRelayAddress = 'https://relay.secluso.net';
+/// Where the official relay is (not self hosted).
+/// Prod/staging
+String get _officialRelayAddress => RelayEnvironment.officialAddress;
 const String _selfHostedRelayConnectionKind = 'self_hosted';
 
 class ServerPage extends StatefulWidget {
@@ -112,6 +118,8 @@ class ServerPage extends StatefulWidget {
   final bool openRelayScanOnLoad;
   final int relayScanRequestId;
 
+  final VoidCallback? onRelayConnected;
+
   const ServerPage({
     super.key,
     required this.showBackButton,
@@ -121,6 +129,7 @@ class ServerPage extends StatefulWidget {
     this.showShellChrome = false,
     this.openRelayScanOnLoad = false,
     this.relayScanRequestId = 0,
+    this.onRelayConnected,
   });
 
   @override
@@ -130,6 +139,13 @@ class ServerPage extends StatefulWidget {
 class _ServerPageState extends State<ServerPage> {
   String? serverAddr;
   List<String> _cameraNames = const [];
+  String? _accountEmail;
+  CameraPlan? _accountPlan;
+  AccountPlanSummary? _accountPlanSummary;
+  // camera name -> stored object bytes on the relay, from /usage by_group.
+  Map<String, int> _perCameraBytes = const {};
+  // The account plan's storage cap in bytes
+  int _planCapBytes = 10 * 1024 * 1024 * 1024;
 
   final TextEditingController _ipController = TextEditingController();
   bool hasSynced = false;
@@ -217,9 +233,145 @@ class _ServerPageState extends State<ServerPage> {
       serverAddr = savedServerAddr;
       hasSynced = synced;
       _cameraNames = cameraNames;
+      _accountEmail = prefs.getString(PrefKeys.serverUsername);
       _ipController.text = serverAddr ?? '';
     });
+    CameraUiBridge.relayConnected.value = synced;
+    if (synced) {
+      unawaited(_loadAccountPlan());
+    }
     _maybeAutoOpenRelayScan();
+  }
+
+  /// What the System tab shows per camera
+  Future<void> _loadAccountPlan() async {
+    if (_isSelfHostedRelay) return;
+    final result = await HttpClientService.instance.fetchAccountUsage();
+    // Renewal rides in the token
+    final sub = await HttpClientService.instance
+        .currentSubscription()
+        .catchError((_) => null);
+    // Server-settable price copy
+    final pricing = await HttpClientService.instance.fetchPricing().catchError(
+      (_) => (premium: null, updatedAtSeconds: null),
+    );
+    // Attribute stored bytes per camera from the relay's group totals.
+    final perCamera = await result.fold(
+      (usage) => HttpClientService.instance.perCameraBytes(usage.byGroup),
+      (_) async => const <String, int>{},
+    );
+    if (!mounted) return;
+    result.fold((usage) {
+      final tier = _planTierFromName(usage.tier);
+      const gb = 1024 * 1024 * 1024;
+      final cap = tier == PlanTier.free ? 10 * gb : 1024 * gb;
+      final fraction =
+          cap > 0 ? (usage.storedBytes / cap).clamp(0.0, 1.0) : 0.0;
+      _perCameraBytes = perCamera;
+      _planCapBytes = cap;
+      setState(() {
+        _accountPlan = CameraPlan(
+          tier: tier,
+          usage: '${_formatBytes(usage.storedBytes)} of ${_formatBytes(cap)}',
+        );
+        _accountPlanSummary = AccountPlanSummary(
+          tier: tier,
+          price: _priceLabelFor(
+            tier,
+            pricing.premium,
+            pricing.updatedAtSeconds,
+          ),
+          renewal: _renewalLabel(sub?.expiresAt),
+          usedLabel: _formatBytes(usage.storedBytes),
+          limitLabel: _formatBytes(cap),
+          usedFraction: fraction.toDouble(),
+          viewersNote: _viewersNote(tier),
+          // Cameras are filled in fresh when the page opens.
+          cameras: const [],
+        );
+      });
+    }, (_) {});
+  }
+
+  // A server-provided price with a newer date wins
+  // A fresh app build (newer date) wins back over an old server value.
+  static const _bundledPremiumPrice = r'$6/mo';
+  static const _bundledAnonymousPrice = r'$10/mo';
+  static final DateTime _bundledPriceAsOf = DateTime.utc(2026, 8, 23);
+
+  static String _priceLabelFor(
+    PlanTier tier,
+    String? serverPremiumPrice,
+    int? serverUpdatedAtSeconds,
+  ) => switch (tier) {
+    // Free shows no price; the tier name already says "Free".
+    PlanTier.free => '',
+    PlanTier.premium => _premiumPriceLabel(
+      serverPremiumPrice,
+      serverUpdatedAtSeconds,
+    ),
+    PlanTier.anonymous => _bundledAnonymousPrice,
+  };
+
+  static String _premiumPriceLabel(String? serverPrice, int? serverUpdatedAt) {
+    final storePrice = BillingService.instance.premiumProduct?.price;
+    if (storePrice != null && storePrice.isNotEmpty) return storePrice;
+    if (serverPrice != null &&
+        serverPrice.isNotEmpty &&
+        serverUpdatedAt != null) {
+      final serverDate = DateTime.fromMillisecondsSinceEpoch(
+        serverUpdatedAt * 1000,
+        isUtc: true,
+      );
+      if (serverDate.isAfter(_bundledPriceAsOf)) return serverPrice;
+    }
+    return _bundledPremiumPrice;
+  }
+
+  static PlanTier _planTierFromName(String name) => switch (name) {
+    'premium' => PlanTier.premium,
+    'anonymous' => PlanTier.anonymous,
+    _ => PlanTier.free,
+  };
+
+  /// Member cap per tier, mirroring the server's tier registry.
+  static String _viewersNote(PlanTier tier) =>
+      tier == PlanTier.free ? '1 viewer' : 'up to 6 viewers';
+
+  /// "renews <date>" from unix seconds, or "" when there's nothing to show
+  static String _renewalLabel(int? expiresAtSeconds) {
+    if (expiresAtSeconds == null) return '';
+    const months = [
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    final date = DateTime.fromMillisecondsSinceEpoch(expiresAtSeconds * 1000);
+    return 'renews ${months[date.month - 1]} ${date.day}';
+  }
+
+  static String _formatBytes(int bytes) {
+    const kb = 1024;
+    const mb = kb * 1024;
+    const gb = mb * 1024;
+    const tb = gb * 1024;
+    String trim(double value) =>
+        value == value.roundToDouble()
+            ? value.toStringAsFixed(0)
+            : value.toStringAsFixed(1);
+    if (bytes >= tb) return '${trim(bytes / tb)} TB';
+    if (bytes >= gb) return '${trim(bytes / gb)} GB';
+    if (bytes >= mb) return '${trim(bytes / mb)} MB';
+    return '${(bytes / kb).toStringAsFixed(0)} KB';
   }
 
   Future<List<String>> _fetchCameraNames() async {
@@ -295,7 +447,9 @@ class _ServerPageState extends State<ServerPage> {
               ReviewEnvironment.instance.session?.cameraNames ?? const [];
           _ipController.text = credentialsFull.serverAddress;
         });
+        CameraUiBridge.relayConnected.value = true;
         CameraUiBridge.refreshCameraListCallback?.call();
+        widget.onRelayConnected?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
@@ -482,6 +636,7 @@ class _ServerPageState extends State<ServerPage> {
         hasSynced = true;
         _cameraNames = const [];
       });
+      CameraUiBridge.relayConnected.value = true;
       CameraUiBridge.refreshCameraListCallback?.call();
 
       //initialize all cameras again
@@ -534,6 +689,7 @@ class _ServerPageState extends State<ServerPage> {
       if (!prevHasSynced) {
         CameraUiBridge.switchShellTabCallback?.call(0);
       }
+      widget.onRelayConnected?.call();
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -644,6 +800,7 @@ class _ServerPageState extends State<ServerPage> {
       _cameraNames = const [];
       _ipController.clear();
     });
+    CameraUiBridge.relayConnected.value = false;
     CameraUiBridge.refreshCameraListCallback?.call();
 
     if (!mounted) return;
@@ -852,6 +1009,7 @@ class _ServerPageState extends State<ServerPage> {
       _cameraNames = const [];
       _ipController.clear();
     });
+    CameraUiBridge.relayConnected.value = false;
     CameraUiBridge.refreshCameraListCallback?.call();
     ScaffoldMessenger.of(
       context,
@@ -1323,27 +1481,10 @@ class _ServerPageState extends State<ServerPage> {
   bool get _isSelfHostedRelay =>
       _resolvedRelayConnectionKind() == _selfHostedRelayConnectionKind;
 
-  /// PLACEHOLDER.
-  static const _placeholderPlans = [
-    CameraPlan(tier: PlanTier.premium, usage: '320 GB of 1 TB'),
-    CameraPlan(tier: PlanTier.anonymous, usage: '820 GB of 2 TB'),
-    CameraPlan(tier: PlanTier.free, usage: '7.4 GB of 10 GB'),
-  ];
-
-  /// PLACEHOLDER.
-  String? _systemAccountEmail() =>
-      _isSelfHostedRelay ? null : 'you@example.com';
+  String? _systemAccountEmail() => _isSelfHostedRelay ? null : _accountEmail;
 
   List<SystemCamera> _systemCameras() => [
-    for (final (index, name) in _cameraNames.indexed)
-      SystemCamera(
-        name: name,
-        // PLACEHOLDER.
-        plan:
-            _isSelfHostedRelay
-                ? null
-                : _placeholderPlans[index % _placeholderPlans.length],
-      ),
+    for (final name in _cameraNames) SystemCamera(name: name),
   ];
 
   /// The relay's own page
@@ -1382,65 +1523,109 @@ class _ServerPageState extends State<ServerPage> {
     );
   }
 
-  /// PLACEHOLDER.
   Future<void> _openAccount() async {
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder:
             (_) => AccountPage(
               email: _systemAccountEmail() ?? '',
-              monthlyTotal: r'$22',
-              plans: _placeholderAccountPlans,
-              onOpenPlan: (plan) => _openCameraPlan(plan.cameraName ?? ''),
-              onAttachPlan: (_) {},
-              onCancelPlan: (_) {},
+              plan: _accountPlanForDisplay(),
+              onOpenCamera: (camera) => _openCameraPlan(camera.name),
+              onChangePlan: () => unawaited(_openPlans()),
+              onCancel: _openBillingPortal,
               onSignOut: () => unawaited(_removeServerConnection()),
             ),
       ),
     );
   }
 
-  /// PLACEHOLDER, see [_placeholderPlans].
-  static const _placeholderAccountPlans = [
-    AccountPlan(
-      tier: PlanTier.premium,
-      cameraName: 'Front Door',
-      price: r'$6/mo',
-      renewal: 'renews Jul 28',
-    ),
-    AccountPlan(
-      tier: PlanTier.anonymous,
-      cameraName: 'Backyard',
-      price: r'$10/mo',
-      renewal: 'renews Jul 28',
-      shared: true,
-    ),
-    AccountPlan(
-      tier: PlanTier.premium,
-      price: r'$6/mo',
-      renewal: 'not on a camera',
-    ),
-  ];
-
-  /// PLACEHOLDER, see [_placeholderPlans].
-  Future<void> _openCameraPlan(String cameraName) async {
-    const people = [
-      SharedPerson(name: 'You', role: 'Owner', isOwner: true),
-      SharedPerson(name: 'Random person', role: 'Can watch live and see clips'),
+  AccountPlanSummary _accountPlanForDisplay() {
+    final cameras = [
+      for (final name in _cameraNames)
+        AccountCamera(
+          name: name,
+          usage:
+              _perCameraBytes.containsKey(name)
+                  ? _formatBytes(_perCameraBytes[name]!)
+                  : null,
+        ),
     ];
+    final loaded = _accountPlanSummary;
+    if (loaded == null) {
+      const gb = 1024 * 1024 * 1024;
+      return AccountPlanSummary(
+        tier: PlanTier.free,
+        price: '',
+        renewal: '',
+        usedLabel: _formatBytes(0),
+        limitLabel: _formatBytes(10 * gb),
+        usedFraction: 0,
+        viewersNote: _viewersNote(PlanTier.free),
+        cameras: cameras,
+      );
+    }
+    return AccountPlanSummary(
+      tier: loaded.tier,
+      price: loaded.price,
+      renewal: loaded.renewal,
+      usedLabel: loaded.usedLabel,
+      limitLabel: loaded.limitLabel,
+      usedFraction: loaded.usedFraction,
+      viewersNote: loaded.viewersNote,
+      cameras: cameras,
+    );
+  }
+
+  Future<void> _choosePlan(PlanOffer offer) async {
+    final storeSells =
+        offer.tier == PlanTier.premium && Distribution.supportsInAppPurchase;
+    if (!storeSells) {
+      await _openBillingPortal();
+      return;
+    }
+
+    final started = await BillingService.instance.buyPremium();
+    if (!mounted) return;
+    if (!started) {
+      // Store not usable or product missing: fall back to the web portal.
+      await _openBillingPortal();
+      return;
+    }
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Opening the store…')));
+  }
+
+  /// Send the user to the web to subscribe or manage a plan.
+  /// Used by F-Droid
+  Future<void> _openBillingPortal() async {
+    final uri = Uri.parse(Distribution.billingPortalUrl);
+    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Could not open ${Distribution.billingPortalUrl}'),
+        ),
+      );
+    }
+  }
+
+  Future<void> _openCameraPlan(String cameraName) async {
+    // Sharing (who else can watch) isn't wired yet, so show just the owner.
+    const people = [SharedPerson(name: 'You', role: 'Owner', isOwner: true)];
+    final tier = _accountPlan?.tier ?? PlanTier.free;
+    // camera's stored bytes, when the relay could attribute them.
+    final bytes = _perCameraBytes[cameraName];
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder:
             (routeContext) => CameraPlanPage(
               detail: CameraPlanDetail(
                 cameraName: cameraName,
-                tier: PlanTier.anonymous,
-                meta: r'$10/mo · up to 2K · renews Jul 28',
-                line: 'No identity travels with your video.',
-                storedOnRelay: '820 GB',
-                storedLimit: '2 TB',
-                motionClips: '580 GB',
-                livestream: '240 GB',
+                tier: tier,
+                line: 'Encrypted end-to-end.',
+                storedOnRelay: bytes != null ? _formatBytes(bytes) : null,
+                storedLimit: bytes != null ? _formatBytes(_planCapBytes) : null,
                 people: people,
               ),
               onShare:
@@ -1455,18 +1640,20 @@ class _ServerPageState extends State<ServerPage> {
                           ),
                     ),
                   ),
-              onChangePlan:
-                  () => Navigator.of(routeContext).push(
-                    MaterialPageRoute<void>(
-                      builder:
-                          (_) => PlansPage(
-                            cameraName: cameraName,
-                            offers: _placeholderPlanOffers,
-                            onChoose: (_) {},
-                          ),
-                    ),
-                  ),
-              onCancel: () {},
+            ),
+      ),
+    );
+  }
+
+  /// Reached from Account -> Change plan.
+  Future<void> _openPlans() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder:
+            (_) => PlansPage(
+              offers: _placeholderPlanOffers,
+              onChoose: _choosePlan,
+              webBilling: !Distribution.supportsInAppPurchase,
             ),
       ),
     );
@@ -1508,6 +1695,7 @@ class _ServerPageState extends State<ServerPage> {
         backgroundColor: SystemPalette.of(context).bg,
         safeTop: true,
         body: RelayChoicePage(
+          hasRoleStep: cameraRoleSupported,
           onSeclusoRelay: () => unawaited(_openRelayLoginFlow()),
           onSelfHosted:
               () => unawaited(
@@ -1532,6 +1720,7 @@ class _ServerPageState extends State<ServerPage> {
           ),
           cameras: _systemCameras(),
           accountEmail: _systemAccountEmail(),
+          plan: _isSelfHostedRelay ? null : _accountPlan,
           onManageAccount: _systemAccountEmail() == null ? null : _openAccount,
           onOpenRelay: _openRelayDetail,
           onAddCamera: _openAddCameraFlow,

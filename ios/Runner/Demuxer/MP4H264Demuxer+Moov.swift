@@ -66,6 +66,10 @@ extension MP4H264Demuxer {
         defaultSampleSize = bestTrack!.stsz.defaultSize
         sampleSizes = bestTrack!.stsz.sizes
 
+        // Record the track ID of the chosen video track for later matching against traf boxes in fragments.
+        videoTrackID = bestTrack!.trackID
+        emitDebug("[MP4] moov: videoTrackID=\(videoTrackID)")
+
         // Derive frame duration from SPS VUI timing if present. This is preferred to table deltas
         // because it encodes the intended frame rate in the elementary stream itself.
         if let sps = spsNALs.first, let fd = deriveFrameDurationFromSPS(sps) {
@@ -104,6 +108,17 @@ extension MP4H264Demuxer {
             let payloadStart = cursor + headerLen
             let payloadEnd = cursor + boxSize
             guard let payload = safeSlice(data, payloadStart, payloadEnd) else { break }
+
+            // The track ID is stored in the tkhd box. 
+            // It is a 32-bit integer at offset 12 for version 0 and offset 20 for version 1.
+            //  We read it here to identify the video track later when parsing fragments.
+            if typ == "tkhd" {
+                if let versionByte = payload.be32(at: 0) {
+                    let version = Int((versionByte >> 24) & 0xFF)
+                    let idOffset = version == 0 ? 12 : 20
+                    if let id = payload.be32(at: idOffset) { t.trackID = id }
+                }
+            }
 
             // Delegate to mdia to determine handler type (video vs. other) and collect timing.
             if typ == "mdia" {

@@ -78,6 +78,17 @@ extension MP4H264Demuxer {
                     "[MP4] enter mdat: headerLen=\(headerLen) payloadLen=\(mdatRemaining.map { String($0) } ?? "∞")"
                 )
 
+                // If we have a fragment plan from a preceding moof, record the offset of the video region
+                if haveFragmentPlan {
+                    fragmentVideoDataOffset =
+                        fragmentVideoMoofRelOffset - currentMoofSize - headerLen
+                    fragmentSampleCursor = 0
+                    emitDebug(
+                        "[MP4] fragment plan: \(fragmentVideoSampleSizes.count) video samples, "
+                            + "payloadOffset=\(fragmentVideoDataOffset)"
+                    )
+                }
+
                 // If a previous partial NAL length/payload tail was stashed, prepend it so parsing
                 // sees a seamless byte stream across mdat boundaries.
                 if !mdatRemainder.isEmpty {
@@ -152,8 +163,8 @@ extension MP4H264Demuxer {
             case "moov":
                 parseMoov(payload)  // movie header + track tables
             case "moof":
-                // fragmented movies not needed
-                break
+                // moof is a fragment header; parse it to plan the video sample sizes and offsets for the following mdat.
+                parseMoof(payload, moofSize: boxSize)
             case "free", "skip", "wide", "sidx", "mvex", "prft", "uuid":
                 break
             default:
@@ -272,7 +283,12 @@ extension MP4H264Demuxer {
             return
         }
 
-        if sampleSizes.isEmpty && defaultSampleSize == 0 {
+        if haveFragmentPlan {
+            // If a fragment plan was parsed from a preceding moof, drain the video samples from the
+            // mdatPayload using the sizes and offset recorded from that plan. 
+            // Interleaved audio is ignored and left behind in the payload.
+            drainFragmentVideoSamples()
+        } else if sampleSizes.isEmpty && defaultSampleSize == 0 {
             // No stsz/default sizing available: parse AVCC length-prefixed NAL units directly
             // from mdatPayload into access units.
             drainAvccFromMdatPayload()
@@ -290,6 +306,23 @@ extension MP4H264Demuxer {
             }
         }
 
+        // If we have a fragment plan and we’ve consumed all the video samples it described, drop the
+        // mdat payload and return to header parsing.
+        // This allows subsequent boxes (e.g. another mdat or trailer metadata) to be found and processed.
+        if haveFragmentPlan, let rem = mdatRemaining, rem <= 0,
+            fragmentSampleCursor >= fragmentVideoSampleSizes.count
+        {
+            emitDebug("[MP4] fragment drained → back to readingHeaders")
+            mdatPayload.removeAll(keepingCapacity: true)
+            haveFragmentPlan = false
+            fragmentVideoSampleSizes.removeAll(keepingCapacity: true)
+            inMdat = false
+            state = .readingHeaders
+            mdatRemaining = nil
+            parseBoxesIfNeeded()
+            return
+        }
+
         // If we had a bounded mdat and we’ve consumed its payload, switch back to header parsing
         // to look for subsequent boxes (e.g., another mdat or trailer metadata).
         if let rem = mdatRemaining, rem <= 0, mdatPayload.isEmpty {
@@ -299,6 +332,136 @@ extension MP4H264Demuxer {
             mdatRemaining = nil
             parseBoxesIfNeeded()
         }
+    }
+
+    /// Drains video samples from the mdatPayload according to a fragment plan parsed from a preceding moof.
+    /// The plan consists of a list of per-sample sizes and a data offset (relative to the moof start) that locates the video region within the mdat.
+    /// Interleaved audio samples are ignored and left behind in the payload. 
+    /// The method slices the mdatPayload into discrete AVCC samples and emits them in order, advancing the fragmentSampleCursor as it goes.
+    private func drainFragmentVideoSamples() {
+        guard fragmentVideoDataOffset >= 0 else {
+            emitDebug("[MP4] fragment plan offset negative; dropping fragment")
+            fragmentSampleCursor = fragmentVideoSampleSizes.count
+            return
+        }
+        var cursor =
+            fragmentVideoDataOffset
+            + fragmentVideoSampleSizes.prefix(fragmentSampleCursor).reduce(0, +)
+        while fragmentSampleCursor < fragmentVideoSampleSizes.count {
+            let size = fragmentVideoSampleSizes[fragmentSampleCursor]
+            let end = cursor + size
+            if end > mdatPayload.count { break }  // wait for more bytes
+            guard let sample = safeSlice(mdatPayload, cursor, end) else { break }
+            emitSample(avccSample: sample)
+            cursor = end
+            fragmentSampleCursor += 1
+        }
+    }
+
+    /// Parses a moof box to extract the video track’s sample sizes and data offset for the following mdat. 
+    /// It walks the moof’s child boxes, looking for traf boxes that match the video track ID. 
+    /// For each matching traf, it reads the trun box to get per-sample sizes and the data offset.
+    /// The extracted information is stored in fragmentVideoSampleSizes and fragmentVideoMoofRelOffset for later use when draining the mdat payload.
+    func parseMoof(_ data: Data, moofSize: Int) {
+        currentMoofSize = moofSize
+        haveFragmentPlan = false
+        fragmentVideoSampleSizes.removeAll(keepingCapacity: true)
+        fragmentSampleCursor = 0
+
+        var cursor = 0
+        while cursor + 8 <= data.count {
+            guard let size32 = data.be32(at: cursor),
+                let typ = data.fourCC(at: cursor + 4)
+            else { break }
+            let boxSize = Int(size32)
+            guard boxSize >= 8, cursor + boxSize <= data.count else { break }
+            if typ == "traf" {
+                if let payload = safeSlice(data, cursor + 8, cursor + boxSize) {
+                    parseTraf(payload)
+                }
+            }
+            cursor += boxSize
+        }
+
+        if haveFragmentPlan {
+            emitDebug(
+                "[MP4] moof: video trun \(fragmentVideoSampleSizes.count) samples, "
+                    + "dataOffset(moof-rel)=\(fragmentVideoMoofRelOffset)")
+        }
+    }
+
+    /// Parses a traf box to extract the video track’s sample sizes and data offset for the following mdat.
+    /// It walks the traf’s child boxes, looking for tfhd and trun boxes.
+    /// The tfhd box provides the track ID, which is matched against the videoTrackID
+    /// The trun box provides the sample count, flags, and per-sample sizes. 
+    /// If the track ID matches the video track, the sample sizes and data offset are stored in fragmentVideoSampleSizes and fragmentVideoMoofRelOffset for later use when draining the mdat payload.
+    private func parseTraf(_ data: Data) {
+        var cursor = 0
+        var trackID: UInt32 = 0
+        var trunPayload: Data? = nil
+
+        while cursor + 8 <= data.count {
+            guard let size32 = data.be32(at: cursor),
+                let typ = data.fourCC(at: cursor + 4)
+            else { break }
+            let boxSize = Int(size32)
+            guard boxSize >= 8, cursor + boxSize <= data.count else { break }
+            let payload = safeSlice(data, cursor + 8, cursor + boxSize)
+            switch typ {
+            case "tfhd":
+                // FullBox; track_id is the first field after version+flags.
+                if let id = payload?.be32(at: 4) { trackID = id }
+            case "trun":
+                trunPayload = payload
+            default:
+                break
+            }
+            cursor += boxSize
+        }
+
+        guard trackID == videoTrackID, let trun = trunPayload else { return }
+
+        // Parse the trun box to extract the sample count, flags, and per-sample sizes.
+        // The flags indicate which optional fields are present in the trun box.
+        // We only care about the data offset and sample sizes for the video track.
+        guard let vf = trun.be32(at: 0), let count = trun.be32(at: 4) else { return }
+        let flags = vf & 0x00FF_FFFF
+        let dataOffsetPresent = (flags & 0x0001) != 0
+        let firstSampleFlagsPresent = (flags & 0x0004) != 0
+        let durationPresent = (flags & 0x0100) != 0
+        let sizePresent = (flags & 0x0200) != 0
+        let sampleFlagsPresent = (flags & 0x0400) != 0
+        let ctoPresent = (flags & 0x0800) != 0
+
+        var p = 8
+        if dataOffsetPresent {
+            guard let off = trun.be32(at: p) else { return }
+            fragmentVideoMoofRelOffset = Int(Int32(bitPattern: off))
+            p += 4
+        } else {
+            fragmentVideoMoofRelOffset = 0
+        }
+        if firstSampleFlagsPresent { p += 4 }
+
+        var sizes: [Int] = []
+        sizes.reserveCapacity(Int(count))
+        for _ in 0..<count {
+            if durationPresent { p += 4 }
+            var sampleSize = 0
+            if sizePresent {
+                guard let s = trun.be32(at: p) else { return }
+                sampleSize = Int(s)
+                p += 4
+            }
+            if sampleFlagsPresent { p += 4 }
+            if ctoPresent { p += 4 }
+            sizes.append(sampleSize)
+        }
+
+        // A trun with no per-sample sizes can't be carved; leave the plan off.
+        guard sizePresent, !sizes.isEmpty else { return }
+        fragmentVideoSampleSizes = sizes
+        haveFragmentPlan = true
     }
 
     /// Returns the next sample size according to stsz. If a default size was

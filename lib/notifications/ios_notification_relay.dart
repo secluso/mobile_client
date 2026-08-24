@@ -1,6 +1,7 @@
 //! SPDX-License-Identifier: GPL-3.0-or-later
 
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
@@ -465,8 +466,12 @@ class IosNotificationRelay {
         );
         return;
       }
-      Log.e(
+      final onSimulator = Platform.environment.containsKey(
+        'SIMULATOR_DEVICE_NAME',
+      );
+      (onSimulator ? Log.w : Log.e)(
         'iOS relay authorization failed '
+        '${onSimulator ? '(simulator: App Attest unavailable) ' : ''}'
         '(step=$currentStep, hub=${_summarizeOpaque(hubId)}, '
         'apnsToken=${_summarizeOpaque(apnsToken)}, '
         'key=${_summarizeOpaque(keyId)}, '

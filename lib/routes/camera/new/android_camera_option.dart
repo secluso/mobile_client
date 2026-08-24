@@ -206,7 +206,7 @@ class _AndroidCameraDialogState extends State<AndroidCameraDialog> {
                         ),
                         SizedBox(width: scaled(12)),
                         Text(
-                          'Android Camera Setup',
+                          'Name your camera',
                           style: GoogleFonts.inter(
                             color: titleColor,
                             fontSize: scaled(18),
@@ -292,7 +292,8 @@ class _AndroidCameraDialogState extends State<AndroidCameraDialog> {
                       SizedBox(width: scaled(10)),
                       Expanded(
                         child: Text(
-                          'Pairing uses the relay connection from the scanned QR code. '
+                          'Pick a name you will recognize, like the room it watches. '
+                          'Your two phones pair through your relay;'
                           'Connection details are encrypted end-to-end.',
                           style: GoogleFonts.inter(
                             color: noteColor,
@@ -326,7 +327,7 @@ class _AndroidCameraDialogState extends State<AndroidCameraDialog> {
                           height: 18 / 12,
                         ),
                       ),
-                      child: const Text('CONNECT CAMERA'),
+                      child: const Text('PAIR CAMERA'),
                     ),
                   ),
                 ],

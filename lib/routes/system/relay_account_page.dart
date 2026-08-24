@@ -6,9 +6,10 @@ import 'package:flutter/material.dart';
 import 'package:secluso_flutter/routes/system/system_marks.dart';
 import 'package:secluso_flutter/routes/system/system_theme.dart';
 import 'package:secluso_flutter/routes/system/system_widgets.dart';
+import 'package:secluso_flutter/utilities/relay_environment.dart';
 
 /// The intro: what a relay account is for..
-class RelayAccountPage extends StatelessWidget {
+class RelayAccountPage extends StatefulWidget {
   const RelayAccountPage({
     required this.onCreateAccount,
     required this.onSignIn,
@@ -19,6 +20,78 @@ class RelayAccountPage extends StatelessWidget {
   final VoidCallback onSignIn;
 
   @override
+  State<RelayAccountPage> createState() => _RelayAccountPageState();
+}
+
+class _RelayAccountPageState extends State<RelayAccountPage> {
+  /// Hidden: long-press the eyebrow to switch between production and staging.
+  Future<void> _showEnvironmentSheet(SystemPalette palette) async {
+    final controller = TextEditingController();
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        String? error;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Server environment'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    RelayEnvironment.isStaging
+                        ? 'Currently: Staging'
+                        : 'Currently: Production',
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    obscureText: true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Staging access code',
+                      errorText: error,
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                if (RelayEnvironment.isStaging)
+                  TextButton(
+                    onPressed: () async {
+                      await RelayEnvironment.setStaging(false);
+                      if (dialogContext.mounted) Navigator.pop(dialogContext);
+                      if (mounted) setState(() {});
+                    },
+                    child: const Text('Use production'),
+                  ),
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    if (!RelayEnvironment.unlocks(controller.text.trim())) {
+                      setDialogState(() => error = 'Wrong code');
+                      return;
+                    }
+                    await RelayEnvironment.setStaging(true);
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    if (mounted) setState(() {});
+                  },
+                  child: const Text('Use staging'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    controller.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final palette = SystemPalette.of(context);
     return Scaffold(
@@ -27,7 +100,19 @@ class RelayAccountPage extends StatelessWidget {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(24, 14, 24, 26),
           children: [
-            Text('SECLUSO RELAY', style: palette.eyebrow),
+            GestureDetector(
+              onLongPress: () => _showEnvironmentSheet(palette),
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                children: [
+                  Text('SECLUSO RELAY', style: palette.eyebrow),
+                  if (RelayEnvironment.isStaging) ...[
+                    const SizedBox(width: 8),
+                    _StagingBadge(palette: palette),
+                  ],
+                ],
+              ),
+            ),
             const SizedBox(height: 6),
             Text('Set up your relay account', style: palette.title),
             const SizedBox(height: 14),
@@ -74,15 +159,41 @@ class RelayAccountPage extends StatelessWidget {
             PrimaryButton(
               label: 'Create account · starts free',
               palette: palette,
-              onPressed: onCreateAccount,
+              onPressed: widget.onCreateAccount,
             ),
             const SizedBox(height: 16),
             QuietLink(
               label: 'I already have an account',
               palette: palette,
-              onTap: onSignIn,
+              onTap: widget.onSignIn,
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Shown by the eyebrow when the app is pointed at staging
+class _StagingBadge extends StatelessWidget {
+  const _StagingBadge({required this.palette});
+
+  final SystemPalette palette;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: palette.warmDim.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        'STAGING',
+        style: palette.eyebrow.copyWith(
+          fontSize: 8.5,
+          letterSpacing: 8.5 * 0.12,
+          color: palette.warmDim,
         ),
       ),
     );

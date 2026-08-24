@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 import 'package:secluso_flutter/utilities/logger.dart';
+import 'package:secluso_flutter/utilities/relay_environment.dart';
 
 /// Bearer-token session for the enterprise delivery service.
 class EnterpriseSession {
@@ -122,7 +123,10 @@ class EnterpriseSession {
 
     final response = await http.post(
       url,
-      headers: {'Authorization': 'Bearer $token'},
+      headers: {
+        'Authorization': 'Bearer $token',
+        ...RelayEnvironment.stagingHeaders(),
+      },
     );
 
     final alreadyHolds = response.statusCode == 409;
@@ -176,7 +180,10 @@ class EnterpriseSession {
 
     final response = await http.post(
       url,
-      headers: {'Content-Type': 'application/json'},
+      headers: {
+        'Content-Type': 'application/json',
+        ...RelayEnvironment.stagingHeaders(),
+      },
       body: jsonEncode(payload),
     );
 

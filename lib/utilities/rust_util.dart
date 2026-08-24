@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:secluso_flutter/keys.dart';
 import 'package:secluso_flutter/utilities/app_paths.dart';
 import 'package:secluso_flutter/utilities/logger.dart';
+import 'package:secluso_flutter/utilities/relay_environment.dart';
 import 'package:secluso_flutter/utilities/rust_api.dart';
 
 class _InitState {
@@ -82,6 +83,7 @@ Future<String> addCamera(
       'p': serverPassword,
       'sa': serverAddress,
       'b': prefs.getString(PrefKeys.serverBackend) ?? 'self_hosted',
+      if (RelayEnvironment.isStaging) 'sk': RelayEnvironment.stagingKey,
     }),
     android: android,
     // The subscription this camera will bill against

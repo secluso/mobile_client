@@ -25,6 +25,13 @@ class CameraUiBridge {
   static void Function(int index, {bool openRelayScanOnLoad})?
   switchShellTabCallback;
 
+  static final ValueNotifier<bool?> relayConnected = ValueNotifier(null);
+  static final ValueNotifier<int?> cameraCount = ValueNotifier(null);
+
+  /// A first camera was just paired.
+  /// Home asks about alerts as soon as it is back on screen
+  static bool pendingFirstCameraAlertAsk = false;
+
   static Future<void> deleteCamera(String cameraName) async {
     await ReviewEnvironment.instance.ensureLoaded();
     if (ReviewEnvironment.instance.session?.cameraByName(cameraName) != null) {

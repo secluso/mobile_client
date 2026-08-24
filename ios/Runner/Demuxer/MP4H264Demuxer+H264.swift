@@ -207,7 +207,8 @@ extension MP4H264Demuxer {
         func commitAndReturn(stashFrom: Int) {
             // Stash any partial tail (prefix or prefix+partial NAL) for the next call
             if stashFrom < total {
-                mdatRemainder = payload.subdata(in: stashFrom..<total)
+                // Stash the remaining bytes for the next call
+                mdatRemainder = safeSlice(payload, stashFrom, total) ?? Data()
             } else {
                 mdatRemainder.removeAll(keepingCapacity: true)
             }

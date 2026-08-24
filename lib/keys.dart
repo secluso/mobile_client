@@ -18,6 +18,9 @@ class PrefKeys {
   static const iosRelayHubToken = 'ios_relay_hub_token';
   static const iosRelayHubTokenExpiryMs = 'ios_relay_hub_token_expiry_ms';
   static const iosRelayBindingJson = 'ios_relay_binding_json';
+
+  /// When true, the official-relay flows point at the staging server
+  static const stagingRelay = "staging_relay_enabled";
   static const serverAddr = "server_addr";
   static const serverUsername = "server_username";
   static const serverPassword = "server_password";

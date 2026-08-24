@@ -19,6 +19,7 @@ import 'package:secluso_flutter/utilities/logger.dart';
 import 'package:secluso_flutter/notifications/firebase.dart';
 import 'package:secluso_flutter/utilities/firebase_init.dart';
 import 'package:secluso_flutter/keys.dart';
+import 'package:secluso_flutter/notifications/notification_permissions.dart';
 import 'package:secluso_flutter/main.dart';
 import 'package:secluso_flutter/routes/app_shell.dart';
 import 'package:secluso_flutter/utilities/app_paths.dart';
@@ -715,8 +716,11 @@ class CamerasPageState extends State<CamerasPage>
     _thumbFutures.clear();
     _eventThumbCache.clear();
     _eventThumbFutures.clear();
-    _loadCamerasFromDatabase(true); // Load this every time we enter the page.
-    _checkNotificationStatus();
+    // Load every time we enter the page,
+    // and only then ask about notif alerts (as opposed to randomly asking)
+    unawaited(
+      _loadCamerasFromDatabase(true).then((_) => _checkNotificationStatus()),
+    );
   }
 
   @override
@@ -727,8 +731,9 @@ class CamerasPageState extends State<CamerasPage>
     _thumbFutures.clear();
     _eventThumbCache.clear();
     _eventThumbFutures.clear();
-    _loadCamerasFromDatabase(true); // Load this every time we enter the page.
-    _checkNotificationStatus();
+    unawaited(
+      _loadCamerasFromDatabase(true).then((_) => _checkNotificationStatus()),
+    );
   }
 
   @override
@@ -820,13 +825,23 @@ class CamerasPageState extends State<CamerasPage>
     final lastAsked = prefs.getInt(PrefKeys.lastNotificationCheck) ?? 0;
     final now = DateTime.now().millisecondsSinceEpoch;
     final cooldown = const Duration(hours: 24).inMilliseconds;
+    final firstCameraJustAdded = CameraUiBridge.pendingFirstCameraAlertAsk;
+    CameraUiBridge.pendingFirstCameraAlertAsk = false;
 
     final status = await Permission.notification.status;
 
     if (status.isDenied || status.isRestricted) {
-      if (now - lastAsked >= cooldown) {
-        Log.d("Requesting for notifications");
+      if (firstCameraJustAdded || now - lastAsked >= cooldown) {
         await prefs.setInt(PrefKeys.lastNotificationCheck, now);
+        if (!mounted) return;
+
+        final wants = await askToEnableAlerts(context);
+        if (!wants) {
+          if (mounted) setState(() => _showNotificationWarning = true);
+          return;
+        }
+        Log.d("Requesting for notifications");
+        if (!mounted) return;
         final result = await Permission.notification.request();
 
         if (mounted) {
@@ -1145,6 +1160,8 @@ class CamerasPageState extends State<CamerasPage>
         break;
       }
     }
+
+    CameraUiBridge.cameraCount.value = all.length;
 
     if (!forceRun &&
         _deepEq.equals(all, cameras) &&

@@ -61,6 +61,7 @@ actor MP4H264Demuxer {
     /// is converted into a CMTime and stored in derivedFrameDur. Otherwise,
     /// a default of ~33 ms per frame is assumed.
     var derivedFrameDur: CMTime?
+    var warnedNoVuiTiming = false
 
     /// Sample size table from the stsz box. Either a single default size
     /// applies to all samples, or an explicit array of per-sample sizes is
@@ -112,10 +113,28 @@ actor MP4H264Demuxer {
 
     struct Trak {
         var isVideo: Bool = false
+        var trackID: UInt32 = 0
         var timescale: Int32? = nil
         var stsz: STSZ = .init(defaultSize: 0, sizes: [])
         var avcC: AvcC = .init(nalLengthSize: 4, sps: [], pps: [])
     }
+
+    /// The video track ID, as read from the moov/trak/tkhd box.
+    var videoTrackID: UInt32 = 0
+
+    /// Fragmented movie support
+    var fragmentVideoSampleSizes: [Int] = []
+    /// The video trun's data_offset, as written (relative to the moof start), converted to an offset within the mdat payload.
+    var fragmentVideoDataOffset: Int = 0
+    /// The video trun's data_offset, as written (relative to the moof start).
+    var fragmentVideoMoofRelOffset: Int = 0
+    /// How many of the fragment's video samples have been emitted so far.
+    var fragmentSampleCursor: Int = 0
+    /// True when the current mdat has a video sample plan from its moof
+    var haveFragmentPlan: Bool = false
+    /// Byte size of the moof preceding the current mdat, to turn a moof-relative
+    /// trun data_offset into an offset within the mdat payload.
+    var currentMoofSize: Int = 0
 
     init(view: ByteSampleBufferView) {
         self.view = view
