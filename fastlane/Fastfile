@@ -1,0 +1,35 @@
+default_platform(:android)
+
+platform :android do
+  desc "Upload the pre-built AAB to the Play internal track as a draft"
+  lane :internal do
+    upload_to_play_store(
+      track: "internal",
+      release_status: "draft",
+      aab: ENV.fetch("SECLUSO_AAB_PATH"),
+      json_key: ENV.fetch("PLAY_JSON_KEY_PATH"),
+      skip_upload_apk: true,
+      skip_upload_metadata: false,
+      skip_upload_changelogs: false,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+end
+
+platform :ios do
+  desc "Upload the pre-built IPA to TestFlight"
+  lane :beta do
+    api_key = app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_filepath: ENV.fetch("ASC_KEY_P8_PATH")
+    )
+    upload_to_testflight(
+      api_key: api_key,
+      ipa: ENV.fetch("SECLUSO_IPA_PATH"),
+      distribute_external: false,
+      skip_waiting_for_build_processing: true
+    )
+  end
+end
