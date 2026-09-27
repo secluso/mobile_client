@@ -1,0 +1,135 @@
+name: Mobile Store Upload
+
+# Stages SIGNED builds to Google Play and Apple TestFlight.
+# This will not make an actual release; it just gets them to release (so it's not fully automated)
+
+on:
+  # Runs automatically after Monthly Mobile Release finishes
+  workflow_run:
+    workflows: ["Monthly Mobile Release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Branch/tag/sha to build (defaults to the triggering ref)"
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-store-upload
+  cancel-in-progress: false
+
+jobs:
+  android:
+    # Only when the triggering release succeeded (or when dispatched manually)
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.event.inputs.ref || github.ref }}
+      - name: Reconstruct Android signing dir
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          d="${RUNNER_TEMP}/signing"; mkdir -p "$d"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$d/release.keystore"
+          cat > "$d/key.properties" <<EOF
+          storeFile=release.keystore
+          storePassword=${ANDROID_KEYSTORE_PASSWORD}
+          keyAlias=${ANDROID_KEY_ALIAS}
+          keyPassword=${ANDROID_KEY_PASSWORD}
+          EOF
+          echo "SECLUSO_ANDROID_SIGNING_DIR=$d" >> "$GITHUB_ENV"
+      - name: Build + sign AAB (Docker, deterministic)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./tool/repro/build_official_appbundle_with_docker.sh
+          aab="build/reproducible/app-release-signed.aab"
+          [[ -f "$aab" ]] || { echo "Signed AAB not found at $aab" >&2; exit 1; }
+          echo "SECLUSO_AAB_PATH=$PWD/$aab" >> "$GITHUB_ENV"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Upload to Play internal (draft)
+        shell: bash
+        env:
+          PLAY_JSON_KEY_BASE64: ${{ secrets.PLAY_JSON_KEY_BASE64 }}
+        run: |
+          set -Eeuo pipefail
+          echo "$PLAY_JSON_KEY_BASE64" | base64 --decode > "${RUNNER_TEMP}/play.json"
+          export PLAY_JSON_KEY_PATH="${RUNNER_TEMP}/play.json"
+          bundle exec fastlane android internal
+
+  ios:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_branch || github.event.inputs.ref || github.ref }}
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Install Rust iOS targets
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          rustup target add aarch64-apple-ios
+      - name: Import signing certificate and provisioning profile
+        shell: bash
+        env:
+          IOS_DIST_CERT_P12_BASE64: ${{ secrets.IOS_DIST_CERT_P12_BASE64 }}
+          IOS_DIST_CERT_PASSWORD: ${{ secrets.IOS_DIST_CERT_PASSWORD }}
+          IOS_PROVISION_PROFILE_BASE64: ${{ secrets.IOS_PROVISION_PROFILE_BASE64 }}
+          IOS_KEYCHAIN_PASSWORD: ${{ secrets.IOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -Eeuo pipefail
+          kc="${RUNNER_TEMP}/ios.keychain-db"
+          p12="${RUNNER_TEMP}/dist.p12"
+          echo "$IOS_DIST_CERT_P12_BASE64" | base64 --decode > "$p12"
+          security create-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$IOS_KEYCHAIN_PASSWORD" "$kc"
+          security import "$p12" -k "$kc" -P "$IOS_DIST_CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$IOS_KEYCHAIN_PASSWORD" "$kc" >/dev/null
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | sed s/\"//g)
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "$IOS_PROVISION_PROFILE_BASE64" | base64 --decode > "$HOME/Library/MobileDevice/Provisioning Profiles/secluso.mobileprovision"
+          rm -f "$p12"
+      - name: Build signed IPA
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          flutter pub get
+          flutter build ipa --release --export-options-plist ios/ExportOptions.plist
+          ipa="$(find build/ios/ipa -maxdepth 1 -name '*.ipa' | head -n 1)"
+          [[ -n "$ipa" ]] || { echo "No IPA produced" >&2; exit 1; }
+          echo "SECLUSO_IPA_PATH=$PWD/$ipa" >> "$GITHUB_ENV"
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+      - name: Upload to TestFlight
+        shell: bash
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
+        run: |
+          set -Eeuo pipefail
+          echo "$ASC_KEY_P8_BASE64" | base64 --decode > "${RUNNER_TEMP}/asc.p8"
+          export ASC_KEY_P8_PATH="${RUNNER_TEMP}/asc.p8"
+          bundle exec fastlane ios beta

@@ -1,0 +1,110 @@
+name: Monthly Mobile Release
+
+# Synchronized mobile release to core repo.
+# After this successfully runs, mobile-store-upload will upload drafts to Google Play / Test Flight
+# Triggered by core repo to get the unsigned AAB's checksum
+# This also publihses a draft release on this repo with this unsigned AAB.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version to sync to, e.g. 1.0.3"
+        required: true
+      backend_sha:
+        description: "Backend commit sha to pin the rust deps to"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: monthly-mobile-release
+  cancel-in-progress: false
+
+jobs:
+  # Sync versions + update core, commit, push
+  sync:
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.s.outputs.version }}
+      sha: ${{ steps.s.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: s
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          VERSION="${{ github.event.inputs.version }}"
+          BSHA="${{ github.event.inputs.backend_sha }}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Bad version '$VERSION'" >&2; exit 1; }
+          [[ "$BSHA" =~ ^[0-9a-f]{7,40}$ ]] || { echo "Bad backend sha '$BSHA'" >&2; exit 1; }
+          echo "Syncing to version $VERSION, backend commit $BSHA"
+
+          # Pin rust deps to the backend commit and set crate versions to match
+          for f in rust/Cargo.toml rust_camera/Cargo.toml; do
+            sed -i -E "s/rev = \"[0-9a-f]+\"/rev = \"$BSHA\"/g" "$f"
+            awk -v v="$VERSION" '
+              /^\[/ { inpkg = ($0 == "[package]") ? 1 : 0 }
+              inpkg && /^version[[:space:]]*=/ && !done { sub(/"[^"]*"/, "\"" v "\""); done=1 }
+              { print }
+            ' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+          done
+
+          # Bump the pubspec store version
+          cur="$(sed -nE 's/^version:[[:space:]]*//p' pubspec.yaml | tr -d ' \r')"
+          build="${cur##*+}"; [[ "$build" =~ ^[0-9]+$ ]] || build=0
+          newbuild=$((build + 1))
+          sed -i -E "s/^version:.*/version: ${VERSION}+${newbuild}/" pubspec.yaml
+          echo "pubspec version -> ${VERSION}+${newbuild}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(release): sync to v$VERSION (backend $BSHA)"
+          git push origin "HEAD:${{ github.ref_name }}"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  # Build the deterministic UNSIGNED reproducible AAB. Publish to a draft
+  aab:
+    needs: sync
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.sync.outputs.sha }}
+      - name: Build unsigned reproducible AAB (Docker)
+        id: build
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ./tool/repro/build_aab_with_docker.sh
+          src="build/reproducible/app-release-unsigned.aab"
+          [[ -f "$src" ]] || { echo "Unsigned AAB not found at $src" >&2; exit 1; }
+          ver="${{ needs.sync.outputs.version }}"
+          asset="app-release-unsigned-v${ver}.aab"
+          cp "$src" "$asset"
+          sha="$(sha256sum "$asset" | awk '{print $1}')"
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha" >> "$GITHUB_OUTPUT"
+          echo "$asset  sha256=$sha"
+      - name: Publish AAB to draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ver="${{ needs.sync.outputs.version }}"
+          tag="v$ver"
+          asset="${{ steps.build.outputs.asset }}"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "$asset" --clobber
+          else
+            gh release create "$tag" "$asset" \
+              --draft \
+              --target "${{ needs.sync.outputs.sha }}" \
+              --title "$tag" \
+              --notes "Unsigned reproducible AAB for v$ver"
+          fi

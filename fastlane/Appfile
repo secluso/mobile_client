@@ -1,0 +1,5 @@
+app_identifier("com.secluso.mobile")
+package_name("com.secluso.mobile")
+
+itc_team_id(ENV["APPLE_TEAM_ID"]) if ENV["APPLE_TEAM_ID"]
+team_id(ENV["APPLE_TEAM_ID"]) if ENV["APPLE_TEAM_ID"]
