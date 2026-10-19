@@ -20,10 +20,16 @@ class IpCameraDialog extends StatefulWidget {
     super.key,
     this.initialCameraName,
     this.initialCameraIp,
+    this.initialQrCode,
   });
 
   final String? initialCameraName;
   final String? initialCameraIp;
+
+  /// The camera secret from the hub's QR code. Pairing needs it: the hub
+  /// locks its MLS invitations with this secret, so without it the app
+  /// cannot join the camera's groups.
+  final Uint8List? initialQrCode;
 
   @override
   State<IpCameraDialog> createState() => _IpCameraDialogState();
@@ -32,6 +38,7 @@ class IpCameraDialog extends StatefulWidget {
     BuildContext context, {
     String? initialCameraName,
     String? initialCameraIp,
+    Uint8List? initialQrCode,
   }) async {
     return Navigator.of(context).push<Map<String, Object>?>(
       MaterialPageRoute<Map<String, Object>?>(
@@ -40,6 +47,7 @@ class IpCameraDialog extends StatefulWidget {
             (ctx) => IpCameraDialog(
               initialCameraName: initialCameraName,
               initialCameraIp: initialCameraIp,
+              initialQrCode: initialQrCode,
             ),
       ),
     );
@@ -105,7 +113,7 @@ class _IpCameraDialogState extends State<IpCameraDialog> {
         final result = <String, Object>{
           "type": "ip",
           "cameraName": cameraName,
-          "qrCode": Uint8List(0),
+          "qrCode": widget.initialQrCode ?? Uint8List(0),
           "cameraIp": cameraIp,
         };
 
@@ -146,7 +154,9 @@ class _IpCameraDialogState extends State<IpCameraDialog> {
   @override
   Widget build(BuildContext context) {
     final dark = Theme.of(context).brightness == Brightness.dark;
+    final hasCameraSecret = widget.initialQrCode?.isNotEmpty ?? false;
     final isFormComplete =
+        hasCameraSecret &&
         _cameraNameController.text.trim().isNotEmpty &&
         _cameraIpController.text.trim().isNotEmpty;
     final backgroundColor =
@@ -347,7 +357,9 @@ class _IpCameraDialogState extends State<IpCameraDialog> {
                       SizedBox(width: scaled(10)),
                       Expanded(
                         child: Text(
-                          'Your camera must be on the same network as\nyour relay. Connection details are encrypted\nend-to-end.',
+                          hasCameraSecret
+                              ? 'Your phone must be on the same network as\nthe camera hub. Connection details are\nencrypted end-to-end.'
+                              : 'Scan the camera QR code shown by your hub\nfirst (Add camera → Scan QR). It opens this\nscreen with the camera secret filled in.',
                           style: GoogleFonts.inter(
                             color: noteColor,
                             fontSize: scaled(10),

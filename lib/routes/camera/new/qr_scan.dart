@@ -344,9 +344,11 @@ class GenericCameraQrPayload {
   factory GenericCameraQrPayload.ip({
     String? initialCameraName,
     String? initialCameraIp,
+    Uint8List? rawQrBytes,
   }) {
     return GenericCameraQrPayload._(
       kind: GenericCameraQrKind.ip,
+      rawQrBytes: rawQrBytes,
       initialCameraName: initialCameraName,
       initialCameraIp: initialCameraIp,
     );
@@ -567,6 +569,7 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
           context,
           initialCameraName: payload.initialCameraName,
           initialCameraIp: payload.initialCameraIp,
+          initialQrCode: payload.rawQrBytes,
         );
       case GenericCameraQrKind.android:
         result = await AndroidCameraDialog.showAndroidCameraPopup(
@@ -676,20 +679,16 @@ class _GenericCameraQrScanPageState extends State<GenericCameraQrScanPage>
               );
             }
 
+            // An IP camera hub marks its QR code with "t": "ip". It carries
+            // the camera secret only: there is no hotspot password, and the
+            // hub's address is typed in by the user in the IP camera dialog.
+            if (decoded['t'] == 'ip') {
+              return GenericCameraQrPayload.ip(rawQrBytes: rawBytes);
+            }
+
             return GenericCameraQrPayload.android(rawQrBytes: rawBytes);
           }
         } catch (_) {}
-
-        // Placeholder for future generic QR support:
-        // when camera QR payloads include a dedicated type/IP field,
-        // route that branch into GenericCameraQrPayload.ip(...).
-        //
-        // Example future shape:
-        // final type = decoded['type'];
-        // final cameraIp = decoded['cameraIp'];
-        // if (type == 'ip' && cameraIp is String && cameraIp.isNotEmpty) {
-        //   return GenericCameraQrPayload.ip(initialCameraIp: cameraIp);
-        // }
       }
 
       final androidSecret = _stringFromAny(decoded, [
